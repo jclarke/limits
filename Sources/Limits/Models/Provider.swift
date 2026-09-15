@@ -33,24 +33,22 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var tint: Color {
-        switch self {
-        case .claude: Color(red: 0.85, green: 0.47, blue: 0.29)
-        case .codex: Color(red: 0.36, green: 0.55, blue: 0.94)
-        case .cursor: Color(red: 0.60, green: 0.45, blue: 0.92)
-        case .grok: Color(red: 0.90, green: 0.76, blue: 0.29)
-        case .antigravity: Color(red: 0.36, green: 0.78, blue: 0.62)
-        }
-    }
+    var tint: Color { Color(nsColor: nsTint) }
 
-    /// The same tints, for the AppKit-drawn menu bar title.
+    /// Brand tint, in the light/dark pair the design specifies. The darker
+    /// value carries enough contrast on a light background; the lighter one
+    /// stays legible on a dark one. Resolved dynamically so a theme change
+    /// repaints without the app rebuilding anything.
     var nsTint: NSColor {
-        switch self {
-        case .claude: NSColor(red: 0.85, green: 0.47, blue: 0.29, alpha: 1)
-        case .codex: NSColor(red: 0.36, green: 0.55, blue: 0.94, alpha: 1)
-        case .cursor: NSColor(red: 0.60, green: 0.45, blue: 0.92, alpha: 1)
-        case .grok: NSColor(red: 0.90, green: 0.76, blue: 0.29, alpha: 1)
-        case .antigravity: NSColor(red: 0.36, green: 0.78, blue: 0.62, alpha: 1)
+        let (light, dark): (UInt32, UInt32) = switch self {
+        case .claude: (0xC25F30, 0xD9784A)
+        case .codex: (0x3A6BD6, 0x5C8CF0)
+        case .cursor: (0x7B4FD8, 0x9973EB)
+        case .grok: (0xA8871F, 0xE6C24A)
+        case .antigravity: (0x2E9B74, 0x5CC79E)
+        }
+        return NSColor(name: nil) { appearance in
+            appearance.isDark ? NSColor(hex: dark) : NSColor(hex: light)
         }
     }
 

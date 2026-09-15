@@ -5,11 +5,12 @@ Portions of the provider credential-discovery and quota-parsing logic in this
 product are derived from the TokenRemain project (Copyright 2026 Dongheng Li),
 licensed under the Apache License, Version 2.0.
 
-Provider brand marks in Sources/Limits/Resources/ProviderIcons/:
-  - claude.svg, codex.svg come from Font Awesome 7 Free (CC BY 4.0),
-    https://fontawesome.com/
-  - cursor.svg, grok.svg, antigravity.svg come from Lobe Icons (MIT),
-    https://github.com/lobehub/lobe-icons
+Provider brand marks in Sources/Limits/Resources/ProviderIcons/ were supplied
+by the "Limits app Mac redesign" Claude Design project. The underlying
+artwork is each vendor's own mark; cursor.svg, grok.svg and antigravity.svg
+match Lobe Icons (MIT), https://github.com/lobehub/lobe-icons. The files are
+stored as single-path templates tinted at runtime, with the provenance
+metadata that shipped with them removed.
 
 Brand names, logos and trademarks are the property of their respective owners
 and are used only to identify each provider.

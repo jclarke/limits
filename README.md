@@ -77,22 +77,33 @@ The app icon is generated rather than checked in as binary art:
 swift script/make_app_icon.swift /tmp && iconutil -c icns /tmp/Limits.iconset -o Resources/Limits.icns
 ```
 
-Meters are tinted with each provider's brand color while healthy, and switch
-to amber under 25% and red under 10%. Percentages stay neutral unless low, so
-a warning color anywhere in the UI always means something.
+The window is a narrow single column (512 pt) with a unified translucent
+titlebar carrying a segmented screen switcher — no sidebar. Cards are glass
+over a vibrant window background.
+
+Meters are ring gauges tinted with each provider's brand color while healthy,
+switching to amber under 25% and red under 10%. Percentages stay neutral
+unless low, so a warning color anywhere in the UI always means something.
 
 ## Icons
 
 Provider brand marks live in `Sources/Limits/Resources/ProviderIcons/` as
 monochrome SVGs, tinted per provider at render time:
 
-| Mark | Source | License |
-| --- | --- | --- |
-| Claude, Codex (OpenAI) | [Font Awesome 7](https://fontawesome.com/) brands | CC BY 4.0 (free brand icons) |
-| Cursor, Grok, Antigravity | [Lobe Icons](https://github.com/lobehub/lobe-icons) | MIT |
+They come from the Claude Design project that specifies the UI, stored as
+single-path `currentColor` templates so one asset serves both themes. The
+~14 KB of provenance metadata each shipped with is stripped; the artwork
+itself is ~0.5–1.5 KB.
 
-Font Awesome has no Cursor, Grok/xAI or Antigravity brand icon — not even in
-Pro — which is why those three come from Lobe Icons.
+Each provider has a light/dark tint pair, resolved dynamically:
+
+| Provider | Light | Dark |
+| --- | --- | --- |
+| Claude | `#C25F30` | `#D9784A` |
+| Codex | `#3A6BD6` | `#5C8CF0` |
+| Cursor | `#7B4FD8` | `#9973EB` |
+| Grok | `#A8871F` | `#E6C24A` |
+| Antigravity | `#2E9B74` | `#5CC79E` |
 
 Brand names, logos and trademarks remain the property of their respective
 owners. They are used here only to identify each provider, which does not

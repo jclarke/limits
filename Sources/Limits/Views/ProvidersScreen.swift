@@ -10,7 +10,7 @@ struct ProvidersScreen: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
+                LazyVStack(spacing: Theme.cardGap) {
                     if let error = usage.lastLoginError {
                         loginErrorBanner(error)
                     }
@@ -18,11 +18,14 @@ struct ProvidersScreen: View {
                         ProviderSection(provider: provider).id(provider)
                     }
                     Text("Limits reads each provider's own saved login. It never refreshes or changes your credentials.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
                         .padding(.top, 2)
                 }
-                .padding(16)
+                .padding(Theme.contentPadding)
             }
             .onChange(of: router.highlighted) { _, id in
                 guard let id, let profile = accounts.profile(id: id) else { return }
@@ -32,26 +35,26 @@ struct ProvidersScreen: View {
     }
 
     private func loginErrorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 9) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.warning)
             Text(message)
-                .font(.callout)
+                .font(.system(size: 11))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Dismiss") { usage.lastLoginError = nil }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .fill(Color.orange.opacity(0.09))
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Theme.warning.opacity(0.12))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.22))
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(Theme.warning.opacity(0.24), lineWidth: 0.5)
         )
     }
 }
@@ -66,39 +69,38 @@ private struct ProviderSection: View {
     private var isTracked: Bool { accounts.trackedProviders.contains(provider) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            if isTracked {
-                Divider()
-                ForEach(accounts.profiles(for: provider)) { profile in
-                    AccountRow(profile: profile)
-                    Divider().padding(.leading, Metrics.cardPadding)
+        GlassCard(muted: !isTracked) {
+            VStack(spacing: 0) {
+                header
+                if isTracked {
+                    Rectangle().fill(Theme.divider).frame(height: 0.5)
+                    ForEach(accounts.profiles(for: provider)) { profile in
+                        AccountRow(profile: profile)
+                        Rectangle()
+                            .fill(Theme.divider)
+                            .frame(height: 0.5)
+                            .padding(.leading, Theme.cardPadding)
+                    }
+                    addAccountRow
                 }
-                addAccountRow
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            ProviderMark(provider: provider, size: 17)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(provider.displayName).font(.headline)
+            ProviderMarkPlate(provider: provider, plateSize: 26, markSize: 15, cornerRadius: 8)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(provider.displayName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .kerning(-0.15)
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: 10)
             Toggle("", isOn: Binding(
                 get: { isTracked },
                 set: { accounts.setTracked(provider, tracked: $0) }
@@ -108,7 +110,8 @@ private struct ProviderSection: View {
             .labelsHidden()
             .help("Track \(provider.displayName)")
         }
-        .padding(Metrics.cardPadding)
+        .padding(.horizontal, Theme.cardPadding)
+        .padding(.vertical, 11)
         // Dim an untracked provider rather than hiding it: discovering a
         // supported provider should not require adding it first.
         .opacity(isTracked ? 1 : 0.55)
@@ -128,13 +131,15 @@ private struct ProviderSection: View {
             router.sheet = .addAccount
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "plus.circle.fill").foregroundStyle(Color.accentColor)
-                Text("Add another \(provider.displayName) account").font(.callout)
+                Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
+                Text("Add another \(provider.displayName) account")
+                    .font(.system(size: 11.5))
                 Spacer()
             }
+            .foregroundStyle(Color.accentColor)
             .contentShape(Rectangle())
-            .padding(.horizontal, Metrics.cardPadding)
-            .padding(.vertical, 10)
+            .padding(.horizontal, Theme.cardPadding)
+            .padding(.vertical, 9)
         }
         .buttonStyle(.plain)
     }
@@ -160,22 +165,24 @@ private struct AccountRow: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
                 StatusDot(color: dotColor)
-
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(snapshot.name).fontWeight(.medium)
+                        Text(snapshot.name)
+                            .font(.system(size: 12, weight: .medium))
+                            .kerning(-0.08)
                         if profile.isSystem { Chip(text: "System") }
                         if let plan = snapshot.quota?.planName { Chip(text: plan) }
                     }
-                    Text(statusText).font(.caption).foregroundStyle(.secondary)
+                    Text(statusText)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-
-                Spacer(minLength: 12)
-
+                Spacer(minLength: 10)
                 if isSigningIn {
                     HStack(spacing: 6) {
-                        ProgressView().controlSize(.small).scaleEffect(0.65)
-                        Text("Signing in…").font(.caption).foregroundStyle(.secondary)
+                        ProgressView().controlSize(.small).scaleEffect(0.6)
+                        Text("Signing in…").font(.system(size: 10.5)).foregroundStyle(.secondary)
                     }
                 } else {
                     visibilityControls
@@ -187,12 +194,12 @@ private struct AccountRow: View {
                 IssueRow(snapshot: snapshot) { apply($0) }
             }
         }
-        .padding(Metrics.cardPadding)
+        .padding(.horizontal, Theme.cardPadding)
+        .padding(.vertical, 10)
         .background(rowBackground)
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.2), value: isHighlighted)
         .onAppear {
-            // Clear the highlight once the user has had time to see it.
             guard isHighlighted else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 if router.highlighted == profile.id { router.highlighted = nil }
@@ -229,7 +236,7 @@ private struct AccountRow: View {
     /// long list, the button style's filled-when-on state dominates the screen
     /// and buries the account name that actually identifies the row.
     private var visibilityControls: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Toggle("Menu Bar", isOn: Binding(
                 get: { profile.showsInMenuBar },
                 set: { accounts.setShowsInMenuBar(profile.id, $0) }
@@ -244,7 +251,7 @@ private struct AccountRow: View {
         }
         .toggleStyle(.checkbox)
         .controlSize(.small)
-        .font(.caption)
+        .font(.system(size: 10.5))
         .fixedSize()
     }
 
@@ -266,7 +273,9 @@ private struct AccountRow: View {
                 Button("Remove account", role: .destructive) { confirmingRemoval = true }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: "ellipsis")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -275,9 +284,9 @@ private struct AccountRow: View {
     }
 
     private var dotColor: Color {
-        if snapshot.needsAttention { return .orange }
+        if snapshot.needsAttention { return Theme.warning }
         if snapshot.issue != nil { return .yellow }
-        return snapshot.quota == nil ? .secondary : .green
+        return snapshot.quota == nil ? .secondary : Theme.healthy
     }
 
     private var statusText: String {

@@ -114,10 +114,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The unified titlebar is what makes a sidebar window read as native:
         // the toolbar merges into the title area and the sidebar's vibrancy
         // runs the full height behind it.
+        // The redesign's titlebar is a single translucent strip carrying the
+        // segmented switcher, so the toolbar merges into it and the content
+        // runs underneath.
         window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .automatic
-        window.setContentSize(NSSize(width: 980, height: 660))
-        window.contentMinSize = NSSize(width: 820, height: 560)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.titlebarSeparatorStyle = .line
+        window.isMovableByWindowBackground = true
+        // A narrow single-column utility window, not a workspace: the width
+        // is fixed to the design's column so cards never stretch into an
+        // unreadable line length.
+        window.setContentSize(NSSize(width: Theme.windowWidth, height: 660))
+        window.contentMinSize = NSSize(width: Theme.windowWidth, height: 360)
+        window.contentMaxSize = NSSize(width: Theme.windowWidth, height: .greatestFiniteMagnitude)
         window.center()
         window.isReleasedWhenClosed = false
         // AppKit state restoration would re-apply a previously saved sidebar
