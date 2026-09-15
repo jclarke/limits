@@ -24,13 +24,27 @@ CONFIGURATION="${LIMITS_CONFIGURATION:-release}"
 # open it without Gatekeeper refusing. When that certificate is installed it
 # is used by default; otherwise the build falls back to ad-hoc so a machine
 # without the certificate can still build and run locally.
-DEFAULT_RELEASE_IDENTITY="Developer ID Application: Hosting Playground Inc (9587GKN6Q4)"
-if [[ -n "${LIMITS_SIGNING_IDENTITY:-}" ]]; then
-  SIGNING_IDENTITY="$LIMITS_SIGNING_IDENTITY"
-elif security find-identity -v -p codesigning 2>/dev/null | grep -qF "$DEFAULT_RELEASE_IDENTITY"; then
-  SIGNING_IDENTITY="$DEFAULT_RELEASE_IDENTITY"
-else
-  SIGNING_IDENTITY="-"
+# Credentials live in .env, which is gitignored — the certificate name and the
+# notarization password must never end up in the repository.
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT_DIR/.env"
+  set +a
+fi
+
+SIGNING_IDENTITY="${LIMITS_SIGNING_IDENTITY:-${MAC_SIGN_IDENTITY:--}}"
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+  # codesign matches an identity by substring, so a value that matches two
+  # certificates would sign with whichever it picked. Refuse instead.
+  MATCHES="$(security find-identity -v -p codesigning | grep -c "$SIGNING_IDENTITY" || true)"
+  if [[ "$MATCHES" -eq 0 ]]; then
+    echo "warning: no codesigning identity matches '$SIGNING_IDENTITY'; signing ad-hoc" >&2
+    SIGNING_IDENTITY="-"
+  elif [[ "$MATCHES" -gt 1 ]]; then
+    echo "error: '$SIGNING_IDENTITY' matches $MATCHES identities; use the full name" >&2
+    exit 1
+  fi
 fi
 
 echo "==> Building ($CONFIGURATION)"

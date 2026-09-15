@@ -3,3 +3,8 @@ dist/
 dist-releases/
 .DS_Store
 *.xcuserstate
+
+# Local signing and notarization credentials. Never commit.
+.env
+.env.*
+!.env.example

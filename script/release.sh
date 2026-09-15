@@ -28,7 +28,14 @@ RELEASE_DIR="$ROOT_DIR/dist-releases"
 INFO_PLIST="$ROOT_DIR/Resources/Info.plist"
 APPCAST="$ROOT_DIR/appcast.xml"
 REPO="jclarke/limits"
-NOTARY_PROFILE="${LIMITS_NOTARY_PROFILE:-limits-notary}"
+
+# Notarization credentials come from .env, which is gitignored.
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT_DIR/.env"
+  set +a
+fi
 SPARKLE_BIN="$(find "$ROOT_DIR/.build/artifacts" -maxdepth 6 -type d -name bin -path "*Sparkle*" | head -1)"
 
 if [[ ! -x "$SPARKLE_BIN/generate_appcast" ]]; then
@@ -77,21 +84,25 @@ echo "==> Notarizing"
 # Without notarization Gatekeeper still refuses a download on first open, even
 # with a valid Developer ID. The ticket is stapled to the app so it verifies
 # offline, which means re-packaging afterwards.
-if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
-  xcrun notarytool submit "$ARCHIVE" --keychain-profile "$NOTARY_PROFILE" --wait
+if [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+  xcrun notarytool submit "$ARCHIVE" \
+    --apple-id "$APPLE_ID" \
+    --team-id "$APPLE_TEAM_ID" \
+    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+    --wait
+  # Staple the app, not the archive: the ticket has to travel inside the
+  # bundle so it verifies on a machine that is offline when first opened.
   xcrun stapler staple "$DIST_DIR/$APP_NAME.app"
   rm -f "$ARCHIVE"
   ditto -c -k --sequesterRsrc --keepParent "$DIST_DIR/$APP_NAME.app" "$ARCHIVE"
+  xcrun stapler validate "$DIST_DIR/$APP_NAME.app"
   echo "    stapled and re-packaged"
 elif [[ "$MODE" == "--allow-unnotarized" ]]; then
-  echo "    warning: no '$NOTARY_PROFILE' keychain profile — shipping UNNOTARIZED." >&2
-  echo "    Users will need right-click → Open on first launch." >&2
+  echo "    warning: shipping UNNOTARIZED — users need right-click → Open." >&2
 else
-  echo "error: no notarytool profile named '$NOTARY_PROFILE'." >&2
-  echo "       Create one once with:" >&2
-  echo "         xcrun notarytool store-credentials $NOTARY_PROFILE \\" >&2
-  echo "           --apple-id <apple-id> --team-id 9587GKN6Q4 --password <app-specific-password>" >&2
-  echo "       Or re-run with --allow-unnotarized to ship without it." >&2
+  echo "error: notarization credentials missing." >&2
+  echo "       Set APPLE_ID, APPLE_TEAM_ID and APPLE_APP_SPECIFIC_PASSWORD in .env," >&2
+  echo "       or re-run with --allow-unnotarized." >&2
   exit 1
 fi
 
