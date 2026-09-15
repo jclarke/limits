@@ -61,18 +61,8 @@ struct DashboardView: View {
             case .guidance(let profile):
                 GuidanceSheet(profile: profile)
             case .antigravitySignIn(let profile):
-                AntigravitySignInView(profile: profile) { signedIn in
-                    // A profile that never completed sign-in has no credential
-                    // and would sit in the list permanently broken.
-                    if !signedIn, !profile.isSystem,
-                       !AntigravityProfileCredentials.hasCredential(
-                           configurationDirectory: profile.configurationDirectoryURL ?? URL(fileURLWithPath: "/")
-                       ) {
-                        accounts.remove(profile.id)
-                    }
-                    router.sheet = nil
-                }
-                .environmentObject(usage)
+                AntigravitySignInView(profile: profile) { _ in router.sheet = nil }
+                    .environmentObject(usage)
             }
         }
     }

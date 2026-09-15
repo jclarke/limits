@@ -48,7 +48,11 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
     /// system account's session belongs to the user's own install, and Limits
     /// will not log that in or out from underneath them.
     var canSignInAgain: Bool {
-        !isSystem
+        // Antigravity is the exception: Limits can drive its CLI's browser
+        // sign-in directly, so even the account the user's own tools use can
+        // be renewed from here rather than from a terminal.
+        if provider.supportsInAppSignIn { return true }
+        return !isSystem
             && credentialKind == .isolatedCLI
             && configurationDirectory != nil
     }

@@ -44,22 +44,12 @@ final class AntigravityLoginSession: ObservableObject {
     /// renders sign-in inside a full-screen TUI, where the URL never reaches
     /// stdout as plain text. The prompt itself never runs: the session is torn
     /// down as soon as authentication resolves.
-    func start(configurationDirectory: URL) {
+    func start() {
         guard case .idle = phase else { return }
         phase = .launching
 
         guard let executable = AccountLoginService.executable(for: .antigravity) else {
             phase = .failed(AccountIssue.cliMissing(executable: "agy").message(provider: .antigravity))
-            return
-        }
-        do {
-            try FileManager.default.createDirectory(
-                at: configurationDirectory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-        } catch {
-            phase = .failed("Could not create the account's profile folder.")
             return
         }
 
@@ -75,10 +65,7 @@ final class AntigravityLoginSession: ObservableObject {
         // A prompt is required to reach the non-TUI code path; its content is
         // irrelevant because the process is killed once auth resolves.
         process.arguments = ["--print", "hello"]
-        process.environment = AntigravityEnvironment.build(
-            configurationDirectory: configurationDirectory,
-            executable: executable
-        )
+        process.environment = AntigravityEnvironment.build(executable: executable)
         let terminal = FileHandle(fileDescriptor: slave, closeOnDealloc: false)
         process.standardInput = terminal
         process.standardOutput = terminal
@@ -202,17 +189,18 @@ enum AntigravityEnvironment {
         "GEMINI_HOME"
     ]
 
+    /// HOME is deliberately left alone. `agy` stores its credential in the
+    /// macOS Keychain, and the Security framework resolves the login keychain
+    /// from HOME — pointing HOME at an app-owned folder makes the CLI find no
+    /// keychain and raises a system "Keychain Not Found" dialog offering to
+    /// reset the user's keychain. Isolation is not worth that, especially as
+    /// the credential's Keychain identity is fixed and would collide anyway.
     static func build(
-        configurationDirectory: URL,
         executable: URL,
         base: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
         var environment = base
         removedKeys.forEach { environment.removeValue(forKey: $0) }
-        // `agy` keys its whole profile off HOME — config, state and, crucially,
-        // its credential — so redirecting HOME is what isolates one account
-        // from another.
-        environment["HOME"] = configurationDirectory.path
         environment["PATH"] = CLIResolver.launchPath(existing: environment["PATH"], executable: executable)
         // Limits opens the authorization URL itself, so the CLI must not race
         // it with a second browser window.
@@ -221,8 +209,5 @@ enum AntigravityEnvironment {
         return environment
     }
 
-    /// Where `agy` keeps the OAuth credential inside a profile.
-    static func credentialURL(configurationDirectory: URL) -> URL {
-        configurationDirectory.appending(path: ".gemini/oauth_creds.json")
-    }
+
 }

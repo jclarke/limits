@@ -83,6 +83,11 @@ final class AccountsStore: ObservableObject {
     /// Creates a managed profile. `isolatedCLI` providers get an app-owned
     /// home with owner-only permissions; credential providers get none.
     func createManagedAccount(provider: Provider, displayName: String) throws -> AccountProfile {
+        guard provider.supportsMultipleAccounts else {
+            throw AccountIssue.other(
+                "\(provider.displayName) supports one account: its CLI stores a single credential that a second sign-in would overwrite."
+            )
+        }
         let uuid = UUID()
         let id = AccountID.managed(uuid)
         var directory: String?
@@ -186,7 +191,10 @@ final class AccountsStore: ObservableObject {
             trackedProviders = Set(Self.autodetectedProviders())
             return
         }
-        managed = decoded.managed.filter(Self.isValid)
+        // An earlier build offered managed Antigravity profiles before it was
+        // clear its CLI keeps only one credential. They can never resolve, so
+        // they are dropped rather than left showing a permanent error.
+        managed = decoded.managed.filter(Self.isValid).filter(\.provider.supportsMultipleAccounts)
         trackedProviders = Set(decoded.tracked)
         systemOverrides = decoded.systemOverrides.reduce(into: [:]) { result, entry in
             guard let provider = Provider(rawValue: entry.key) else { return }

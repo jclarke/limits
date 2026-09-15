@@ -26,13 +26,7 @@ struct AntigravitySignInView: View {
         }
         .padding(20)
         .frame(width: 460)
-        .onAppear {
-            guard let directory = profile.configurationDirectoryURL else {
-                onFinish(false)
-                return
-            }
-            session.start(configurationDirectory: directory)
-        }
+        .onAppear { session.start() }
     }
 
     private var header: some View {
@@ -118,15 +112,14 @@ struct AntigravitySignInView: View {
     }
 
     private func submit() {
-        guard let directory = profile.configurationDirectoryURL else { return }
         session.submit(code: code)
         Task {
             // The CLI is killed mid-prompt once the token lands, so success is
-            // confirmed by the credential appearing rather than by an exit
-            // code. Poll briefly for it.
+            // confirmed by a usable credential appearing rather than by an
+            // exit code. Poll briefly for it.
             for _ in 0..<40 {
                 try? await Task.sleep(nanoseconds: 500_000_000)
-                if AntigravityProfileCredentials.hasCredential(configurationDirectory: directory) {
+                if await AntigravityTokenReader().load() != nil {
                     session.markFinished()
                     await usage.refresh(profile)
                     onFinish(true)

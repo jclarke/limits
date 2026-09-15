@@ -68,6 +68,25 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Whether a second account can exist alongside the first.
+    ///
+    /// Antigravity's CLI stores its credential under one fixed Keychain
+    /// identity (`service=gemini, account=antigravity`) with nothing in it
+    /// derived from the profile, so a second sign-in overwrites the first.
+    /// Redirecting HOME to isolate it does not help either — macOS resolves
+    /// the login keychain from HOME, so the CLI finds no keychain at all and
+    /// raises a system "Keychain Not Found" dialog.
+    var supportsMultipleAccounts: Bool {
+        switch self {
+        case .claude, .codex, .cursor, .grok: true
+        case .antigravity: false
+        }
+    }
+
+    /// Whether Limits can run this provider's sign-in itself, including for
+    /// the account the provider's own tools already use.
+    var supportsInAppSignIn: Bool { self == .antigravity }
+
     /// The CLI that owns authentication for `isolatedCLI` providers.
     var cliExecutableName: String? {
         switch self {

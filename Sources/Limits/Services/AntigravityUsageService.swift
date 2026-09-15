@@ -17,21 +17,12 @@ struct AntigravityUsageService {
     ]
     private static let logger = Logger(subsystem: "com.josephclarke.limits", category: "Antigravity")
 
-    /// A managed account reads only its own isolated profile. It must never
-    /// probe the running app or fall through to the shared Keychain item —
-    /// either would quietly report the *other* account's quota.
+    /// Antigravity keeps one credential for one account, so there is no
+    /// per-account routing to do here.
     func fetch(
-        configurationDirectory: URL? = nil,
         now: Date = .now,
         keychainInteraction: KeychainRead.Interaction = .disallowed
     ) async throws -> ProviderQuota {
-        if let configurationDirectory {
-            let token = try await AntigravityProfileCredentials.read(
-                configurationDirectory: configurationDirectory,
-                now: now
-            )
-            return try await fetch(token: token, now: now)
-        }
 
         var localProbeFoundApp = false
         do {

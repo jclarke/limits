@@ -81,7 +81,7 @@ private struct ProviderSection: View {
                             .frame(height: 0.5)
                             .padding(.leading, Theme.cardPadding)
                     }
-                    addAccountRow
+                    if provider.supportsMultipleAccounts { addAccountRow }
                 }
             }
         }
@@ -117,12 +117,16 @@ private struct ProviderSection: View {
         .opacity(isTracked ? 1 : 0.55)
     }
 
+    /// The copy must not promise accounts a provider cannot actually hold.
     private var subtitle: String {
+        guard provider.supportsMultipleAccounts else {
+            return "Signs in with Google through \(provider.displayName)'s own CLI, which stores one account at a time."
+        }
         switch provider.credentialKind {
         case .isolatedCLI:
-            "Sign in to as many accounts as you like — each gets its own isolated profile."
+            return "Sign in to as many accounts as you like — each gets its own isolated profile."
         case .keychainSecret:
-            "Reads the account \(provider.displayName) is signed into. Extra accounts use a saved token."
+            return "Reads the account \(provider.displayName) is signed into. Extra accounts use a saved token."
         }
     }
 

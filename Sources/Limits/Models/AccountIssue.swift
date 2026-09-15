@@ -104,7 +104,9 @@ enum AccountIssue: Codable, Hashable, Sendable {
             break
         }
         // A remedy must match how the account authenticates, not just what
-        // broke: a system account has no app-owned session to replace.
+        // broke: a system account has no app-owned session to replace —
+        // unless Limits can run that provider's own sign-in for it.
+        if account.provider.supportsInAppSignIn { return .signInAgain }
         switch account.credentialKind {
         case .isolatedCLI:
             return account.isSystem ? .signInWithProviderApp : .signInAgain
