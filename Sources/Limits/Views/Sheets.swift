@@ -19,7 +19,15 @@ struct AddAccountSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Add Account").font(.title2).fontWeight(.semibold)
+            HStack(spacing: 10) {
+                ProviderMark(provider: provider, size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Add Account").font(.headline)
+                    Text("Track another \(provider.displayName) account")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Picker("Provider", selection: $provider) {
                 ForEach(Provider.allCases) { candidate in

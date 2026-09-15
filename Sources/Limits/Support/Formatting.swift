@@ -45,13 +45,20 @@ enum Formatting {
         return "Updated \(duration(interval)) ago"
     }
 
-    /// Green while there is headroom, amber as it tightens, red when nearly
-    /// exhausted. The same scale is used by every meter in the app.
-    static func tint(forRemaining remaining: Double) -> Color {
+    /// Meter color. A healthy window wears its provider's own color, which
+    /// gives each card an identity and keeps a screen of full meters from
+    /// reading as one undifferentiated block of green. Warning colors take
+    /// over only when the number actually needs attention, so amber and red
+    /// still mean something.
+    static func tint(forRemaining remaining: Double, provider: Provider? = nil) -> Color {
         switch remaining {
-        case ..<10: .red
-        case ..<25: .orange
-        default: .green
+        case ..<10: return .red
+        case ..<25: return .orange
+        default: return provider?.tint ?? .green
         }
     }
+
+    /// True when the value has crossed into warning territory, so callers can
+    /// emphasize it without re-deriving the thresholds.
+    static func isLow(_ remaining: Double) -> Bool { remaining < 25 }
 }

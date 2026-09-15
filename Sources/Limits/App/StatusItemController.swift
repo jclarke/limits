@@ -184,4 +184,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     func closePopover() { popover.performClose(nil) }
+
+    /// Development aid: show the popover without a click, so its layout can be
+    /// inspected the same way the window can.
+    func showPopoverForInspection() {
+        guard let button = statusItem?.button, !popover.isShown else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
 }

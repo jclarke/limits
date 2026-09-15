@@ -8,15 +8,7 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $router.tab) {
-                Section("Monitor") {
-                    ForEach(Router.Tab.allCases) { tab in
-                        Label(tab.title, systemImage: tab.symbolName).tag(tab)
-                    }
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
-            .safeAreaInset(edge: .bottom) { syncStatus }
+            sidebar
         } detail: {
             Group {
                 switch router.tab {
@@ -25,6 +17,27 @@ struct DashboardView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .underPageBackgroundColor))
+            .navigationTitle(router.tab.title)
+            .toolbar {
+                ToolbarItemGroup {
+                    if router.tab == .providers {
+                        Button {
+                            router.sheet = .addAccount
+                        } label: {
+                            Label("Add Account", systemImage: "plus")
+                        }
+                        .help("Add a provider account")
+                    }
+                    Button {
+                        Task { await usage.refreshAll() }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(usage.isRefreshingAll)
+                    .help("Refresh every tracked account")
+                }
+            }
         }
         .sheet(item: $router.sheet) { sheet in
             switch sheet {
@@ -42,82 +55,114 @@ struct DashboardView: View {
         }
     }
 
-    /// A single honest line about whether the numbers on screen can be trusted.
-    private var syncStatus: some View {
-        let attention = usage.attentionSnapshots.count
-        return HStack(spacing: 7) {
-            Circle()
-                .fill(attention == 0 ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
-            Text(attention == 0
-                 ? "All accounts healthy"
-                 : "\(attention) account\(attention == 1 ? "" : "s") need attention")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
+    private var sidebar: some View {
+        List(selection: $router.tab) {
+            Section("Monitor") {
+                ForEach(Router.Tab.allCases) { tab in
+                    Label(tab.title, systemImage: tab.symbolName).tag(tab)
+                }
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 172, ideal: 188, max: 240)
+        .safeAreaInset(edge: .bottom, spacing: 0) { healthFooter }
+    }
+
+    /// One honest line about whether the numbers on screen can be trusted.
+    private var healthFooter: some View {
+        let attention = usage.attentionSnapshots.count
+        return VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 7) {
+                StatusDot(color: attention == 0 ? .green : .orange)
+                Text(attention == 0
+                     ? "All accounts healthy"
+                     : "\(attention) account\(attention == 1 ? "" : "s") need attention")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+        }
     }
 }
 
-/// The dashboard's Limits screen: one card per provider, accounts inside.
+/// The Limits screen: one card per provider, accounts inside.
 struct LimitsScreen: View {
-    @EnvironmentObject private var accounts: AccountsStore
     @EnvironmentObject private var usage: UsageStore
     @EnvironmentObject private var router: Router
 
-    private let columns = [GridItem(.adaptive(minimum: 330, maximum: 520), spacing: 16, alignment: .top)]
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+            LazyVStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
                 if !usage.attentionSnapshots.isEmpty {
                     AttentionBanner()
                 }
                 if usage.groupedSnapshots.isEmpty {
-                    ContentUnavailableView {
-                        Label("No accounts tracked", systemImage: "gauge.with.dots.needle.67percent")
-                    } description: {
-                        Text("Add an account on the Providers screen to see its limits here.")
-                    } actions: {
-                        Button("Open Providers") { router.tab = .providers }
-                            .buttonStyle(.borderedProminent)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 300)
+                    emptyState
                 } else {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(usage.groupedSnapshots, id: \.provider) { group in
-                            ProviderLimitsCard(provider: group.provider, accounts: group.accounts)
+                    BalancedColumns(
+                        items: usage.groupedSnapshots.map(ProviderGroup.init),
+                        // One row per quota window, plus a header and a name
+                        // line per account: close enough to real height to
+                        // keep the columns level.
+                        weight: { group in
+                            2 + group.accounts.reduce(0) { total, account in
+                                total + 1 + (account.quota?.windows.count ?? 1)
+                            }
                         }
+                    ) { group in
+                        ProviderLimitsCard(provider: group.provider, accounts: group.accounts)
                     }
                 }
+                footer
             }
-            .padding(20)
+            .padding(16)
         }
-        .background(Color(nsColor: .underPageBackgroundColor))
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Limits").font(.largeTitle).fontWeight(.semibold)
-                Text("Quota windows across your AI coding tools")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No accounts tracked", systemImage: "gauge.with.dots.needle.67percent")
+        } description: {
+            Text("Add an account on the Providers screen to see its limits here.")
+        } actions: {
+            Button("Open Providers") { router.tab = .providers }
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, minHeight: 320)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 5) {
+            if usage.isRefreshingAll {
+                ProgressView().controlSize(.small).scaleEffect(0.6)
+                Text("Refreshing…")
+            } else if let updated = Formatting.relative(
+                usage.states.values.compactMap(\.lastRefreshedAt).max()
+            ) {
+                Text(updated)
             }
             Spacer()
-            if let updated = Formatting.relative(usage.states.values.compactMap(\.lastRefreshedAt).max()) {
-                Text(updated).font(.caption).foregroundStyle(.secondary)
-            }
-            Button {
-                Task { await usage.refreshAll() }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-            .disabled(usage.isRefreshingAll)
         }
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+        .padding(.top, 2)
+    }
+}
+
+/// Identifiable wrapper so a provider's accounts can drive a layout.
+private struct ProviderGroup: Identifiable {
+    let provider: Provider
+    let accounts: [AccountSnapshot]
+
+    var id: Provider { provider }
+
+    init(_ group: (provider: Provider, accounts: [AccountSnapshot])) {
+        provider = group.provider
+        accounts = group.accounts
     }
 }
 
@@ -128,7 +173,7 @@ private struct AttentionBanner: View {
 
     var body: some View {
         let snapshots = usage.attentionSnapshots
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             Label(
                 "\(snapshots.count) account\(snapshots.count == 1 ? "" : "s") need attention",
                 systemImage: "exclamationmark.triangle.fill"
@@ -137,25 +182,31 @@ private struct AttentionBanner: View {
             .foregroundStyle(.orange)
 
             ForEach(snapshots) { snapshot in
-                HStack(spacing: 6) {
-                    ProviderMark(provider: snapshot.provider, size: 11)
-                    Text("\(snapshot.provider.displayName) · \(snapshot.name)").font(.caption)
+                HStack(spacing: 7) {
+                    ProviderMark(provider: snapshot.provider, size: 12)
+                    Text(snapshot.provider.displayName).font(.caption).fontWeight(.medium)
+                    Text(snapshot.name).font(.caption).foregroundStyle(.secondary)
+                    Text("·").foregroundStyle(.tertiary)
                     Text(snapshot.issue?.title ?? "").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
+                    Spacer(minLength: 8)
                     Button("Fix") {
-                        router.tab = .providers
                         router.highlighted = snapshot.id
+                        router.tab = .providers
                     }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.orange.opacity(0.10))
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .fill(Color.orange.opacity(0.09))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.22))
         )
     }
 }
@@ -169,66 +220,59 @@ private struct ProviderLimitsCard: View {
     let accounts: [AccountSnapshot]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 7) {
-                ProviderMark(provider: provider, size: 15)
-                Text(provider.displayName).font(.title3).fontWeight(.semibold)
-                Spacer()
-                if accounts.count > 1 {
-                    Text("\(accounts.count) accounts").font(.caption).foregroundStyle(.secondary)
-                }
-            }
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                ProviderHeader(
+                    provider: provider,
+                    accountCount: accounts.count,
+                    // With one account there is no ambiguity about whose plan
+                    // this is, so it belongs beside the provider name rather
+                    // than stranded on a line of its own.
+                    planName: accounts.count == 1 ? accounts.first?.quota?.planName : nil
+                )
 
-            ForEach(accounts) { snapshot in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: snapshot.profile.isSystem ? "person.crop.circle" : "person.crop.circle.badge.plus")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(snapshot.name).font(.subheadline).fontWeight(.medium)
-                        if let plan = snapshot.quota?.planName {
-                            Text(plan)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.primary.opacity(0.08)))
-                                .foregroundStyle(.secondary)
+                ForEach(accounts) { snapshot in
+                    VStack(alignment: .leading, spacing: 8) {
+                        accountHeader(snapshot)
+
+                        if let quota = snapshot.quota {
+                            ForEach(quota.windows) { window in
+                                QuotaWindowRow(window: window, provider: provider)
+                            }
                         }
-                        Spacer()
-                        if snapshot.state.isRefreshing {
-                            ProgressView().controlSize(.small).scaleEffect(0.65)
+
+                        if snapshot.issue != nil {
+                            IssueRow(snapshot: snapshot) { apply($0, to: snapshot) }
+                        } else if snapshot.quota == nil {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small).scaleEffect(0.6)
+                                Text("Loading…").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
-
-                    if let quota = snapshot.quota {
-                        ForEach(quota.windows) { window in
-                            QuotaWindowRow(window: window)
-                        }
-                    }
-
-                    if snapshot.issue != nil {
-                        IssueRow(snapshot: snapshot) { remedy in
-                            apply(remedy, to: snapshot)
-                        }
-                    } else if snapshot.quota == nil {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small).scaleEffect(0.65)
-                            Text("Loading…").font(.caption).foregroundStyle(.secondary)
-                        }
+                    if snapshot.id != accounts.last?.id {
+                        Divider().padding(.vertical, 2)
                     }
                 }
-                if snapshot.id != accounts.last?.id { Divider() }
             }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.07))
-        )
+    }
+
+    /// Only shown when it adds information: a lone system account's name is
+    /// already implied by the provider heading above it.
+    @ViewBuilder
+    private func accountHeader(_ snapshot: AccountSnapshot) -> some View {
+        let showsName = accounts.count > 1 || !snapshot.profile.isSystem
+        if showsName {
+            HStack(spacing: 6) {
+                Text(snapshot.name).font(.subheadline).fontWeight(.medium)
+                if let plan = snapshot.quota?.planName { Chip(text: plan) }
+                Spacer(minLength: 0)
+                if snapshot.state.isRefreshing {
+                    ProgressView().controlSize(.small).scaleEffect(0.55)
+                }
+            }
+        }
     }
 
     private func apply(_ remedy: AccountIssue.Remedy, to snapshot: AccountSnapshot) {

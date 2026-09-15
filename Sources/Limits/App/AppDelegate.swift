@@ -27,6 +27,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Development aid: `Limits.app/Contents/MacOS/Limits --open-dashboard`
         // brings the window up without needing to click the menu bar item.
+        // `--dark` forces the dark appearance so both themes can be checked
+        // without changing the user's system setting.
+        if CommandLine.arguments.contains("--dark") {
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+        if CommandLine.arguments.contains("--open-popover") {
+            // Give the first refresh a moment so the popover has real content.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                self?.statusItemController?.showPopoverForInspection()
+            }
+        }
         if CommandLine.arguments.contains("--open-dashboard") {
             let tab: Router.Tab = CommandLine.arguments.contains("--providers") ? .providers : .limits
             showDashboard(tab)
@@ -60,7 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSWindow(contentViewController: hosting)
         window.title = "Limits"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
+        // The unified titlebar is what makes a sidebar window read as native:
+        // the toolbar merges into the title area and the sidebar's vibrancy
+        // runs the full height behind it.
+        window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .automatic
         window.setContentSize(NSSize(width: 980, height: 660))
         window.contentMinSize = NSSize(width: 820, height: 560)
         window.center()

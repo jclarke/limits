@@ -8,6 +8,8 @@
     <string>Limits</string>
     <key>CFBundleExecutable</key>
     <string>Limits</string>
+    <key>CFBundleIconFile</key>
+    <string>Limits</string>
     <key>CFBundleIdentifier</key>
     <string>com.josephclarke.limits</string>
     <key>CFBundlePackageType</key>

@@ -16,6 +16,9 @@ Useful while developing:
 ```sh
 dist/Limits.app/Contents/MacOS/Limits --diagnose        # print every provider's live numbers
 dist/Limits.app/Contents/MacOS/Limits --open-dashboard  # open the window without clicking the menu bar
+dist/Limits.app/Contents/MacOS/Limits --open-dashboard --providers  # ...on the Providers screen
+dist/Limits.app/Contents/MacOS/Limits --open-popover    # show the dropdown for inspection
+dist/Limits.app/Contents/MacOS/Limits --dark            # force dark appearance
 ```
 
 ## How it reads your accounts
@@ -54,6 +57,18 @@ Each account has two independent switches:
 
 - **Menu Bar** — include this account's remaining percentage in the menu bar title.
 - **Track** — fetch it at all and show it on the Limits screen and dropdown.
+
+## Design
+
+The app icon is generated rather than checked in as binary art:
+
+```sh
+swift script/make_app_icon.swift /tmp && iconutil -c icns /tmp/Limits.iconset -o Resources/Limits.icns
+```
+
+Meters are tinted with each provider's brand color while healthy, and switch
+to amber under 25% and red under 10%. Percentages stay neutral unless low, so
+a warning color anywhere in the UI always means something.
 
 ## Icons
 

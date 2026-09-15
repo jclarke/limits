@@ -10,27 +10,20 @@ struct ProvidersScreen: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
+                LazyVStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
                     if let error = usage.lastLoginError {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.orange)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.orange.opacity(0.10))
-                            )
+                        loginErrorBanner(error)
                     }
                     ForEach(Provider.allCases) { provider in
-                        ProviderSection(provider: provider)
-                            .id(provider)
+                        ProviderSection(provider: provider).id(provider)
                     }
+                    Text("Limits reads each provider's own saved login. It never refreshes or changes your credentials.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 2)
                 }
-                .padding(20)
+                .padding(16)
             }
-            .background(Color(nsColor: .underPageBackgroundColor))
             .onChange(of: router.highlighted) { _, id in
                 guard let id, let profile = accounts.profile(id: id) else { return }
                 withAnimation { proxy.scrollTo(profile.provider, anchor: .top) }
@@ -38,29 +31,34 @@ struct ProvidersScreen: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Providers").font(.largeTitle).fontWeight(.semibold)
-                Text("Sign in to multiple accounts and choose what to show")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button {
-                router.sheet = .addAccount
-            } label: {
-                Label("Add Account", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
+    private func loginErrorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("Dismiss") { usage.lastLoginError = nil }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .fill(Color.orange.opacity(0.09))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.22))
+        )
     }
 }
 
-/// One provider: a tracking toggle and its accounts.
+/// One provider: a tracking switch and its accounts.
 private struct ProviderSection: View {
     @EnvironmentObject private var accounts: AccountsStore
-    @EnvironmentObject private var usage: UsageStore
     @EnvironmentObject private var router: Router
 
     let provider: Provider
@@ -69,51 +67,59 @@ private struct ProviderSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                ProviderMark(provider: provider, size: 16)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(provider.displayName).font(.title3).fontWeight(.semibold)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Toggle("Track", isOn: Binding(
-                    get: { isTracked },
-                    set: { accounts.setTracked(provider, tracked: $0) }
-                ))
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .help("Track \(provider.displayName)")
-            }
-            .padding(16)
-
+            header
             if isTracked {
                 Divider()
-                VStack(spacing: 0) {
-                    ForEach(accounts.profiles(for: provider)) { profile in
-                        AccountRow(profile: profile)
-                        Divider().padding(.leading, 16)
-                    }
-                    addAccountRow
+                ForEach(accounts.profiles(for: provider)) { profile in
+                    AccountRow(profile: profile)
+                    Divider().padding(.leading, Metrics.cardPadding)
                 }
+                addAccountRow
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.07))
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08))
         )
-        .opacity(isTracked ? 1 : 0.65)
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            ProviderMark(provider: provider, size: 17)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(provider.displayName).font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: Binding(
+                get: { isTracked },
+                set: { accounts.setTracked(provider, tracked: $0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .labelsHidden()
+            .help("Track \(provider.displayName)")
+        }
+        .padding(Metrics.cardPadding)
+        // Dim an untracked provider rather than hiding it: discovering a
+        // supported provider should not require adding it first.
+        .opacity(isTracked ? 1 : 0.55)
     }
 
     private var subtitle: String {
         switch provider.credentialKind {
         case .isolatedCLI:
-            return "Sign in to as many accounts as you like — each gets its own isolated \(provider.displayName) profile."
+            "Sign in to as many accounts as you like — each gets its own isolated profile."
         case .keychainSecret:
-            return "Reads the account \(provider.displayName) is signed into. Extra accounts use a saved token."
+            "Reads the account \(provider.displayName) is signed into. Extra accounts use a saved token."
         }
     }
 
@@ -127,14 +133,14 @@ private struct ProviderSection: View {
                 Spacer()
             }
             .contentShape(Rectangle())
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
+            .padding(.horizontal, Metrics.cardPadding)
+            .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
     }
 }
 
-/// One account row: name, state, visibility toggles, and its fix action.
+/// One account row: status, visibility checkboxes, and its fix action.
 private struct AccountRow: View {
     @EnvironmentObject private var accounts: AccountsStore
     @EnvironmentObject private var usage: UsageStore
@@ -144,53 +150,49 @@ private struct AccountRow: View {
     @State private var isRenaming = false
     @State private var draftName = ""
     @State private var confirmingRemoval = false
+    @State private var isHovering = false
 
     private var snapshot: AccountSnapshot { usage.snapshot(for: profile) }
     private var isHighlighted: Bool { router.highlighted == profile.id }
     private var isSigningIn: Bool { usage.loggingIn.contains(profile.id) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
-                statusDot
+                StatusDot(color: dotColor)
+
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(snapshot.name).font(.body).fontWeight(.medium)
-                        if profile.isSystem {
-                            Text("System")
-                                .font(.caption2)
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Capsule().fill(Color.primary.opacity(0.08)))
-                                .foregroundStyle(.secondary)
-                        }
-                        if let plan = snapshot.quota?.planName {
-                            Text(plan).font(.caption2).foregroundStyle(.secondary)
-                        }
+                        Text(snapshot.name).fontWeight(.medium)
+                        if profile.isSystem { Chip(text: "System") }
+                        if let plan = snapshot.quota?.planName { Chip(text: plan) }
                     }
                     Text(statusText).font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer()
+
+                Spacer(minLength: 12)
 
                 if isSigningIn {
-                    HStack(spacing: 5) {
-                        ProgressView().controlSize(.small).scaleEffect(0.7)
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small).scaleEffect(0.65)
                         Text("Signing in…").font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
-                    controls
+                    visibilityControls
+                    actionsMenu
                 }
             }
 
             if snapshot.issue != nil {
-                IssueRow(snapshot: snapshot) { remedy in apply(remedy) }
+                IssueRow(snapshot: snapshot) { apply($0) }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(isHighlighted ? Color.accentColor.opacity(0.10) : .clear)
-        .animation(.easeOut(duration: 0.25), value: isHighlighted)
+        .padding(Metrics.cardPadding)
+        .background(rowBackground)
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.2), value: isHighlighted)
         .onAppear {
-            // Clear the highlight once the user has seen it.
+            // Clear the highlight once the user has had time to see it.
             guard isHighlighted else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 if router.highlighted == profile.id { router.highlighted = nil }
@@ -212,11 +214,64 @@ private struct AccountRow: View {
         }
     }
 
-    private var statusDot: some View {
-        Circle()
-            .fill(dotColor)
-            .frame(width: 8, height: 8)
-            .help(snapshot.issue?.title ?? "Healthy")
+    @ViewBuilder
+    private var rowBackground: some View {
+        if isHighlighted {
+            Color.accentColor.opacity(0.12)
+        } else if isHovering {
+            Color.primary.opacity(0.035)
+        } else {
+            Color.clear
+        }
+    }
+
+    /// Checkboxes rather than filled toggle buttons: two of these per row in a
+    /// long list, the button style's filled-when-on state dominates the screen
+    /// and buries the account name that actually identifies the row.
+    private var visibilityControls: some View {
+        HStack(spacing: 14) {
+            Toggle("Menu Bar", isOn: Binding(
+                get: { profile.showsInMenuBar },
+                set: { accounts.setShowsInMenuBar(profile.id, $0) }
+            ))
+            .help("Show this account's remaining percentage in the menu bar")
+
+            Toggle("Track", isOn: Binding(
+                get: { profile.isEnabled },
+                set: { accounts.setEnabled(profile.id, $0) }
+            ))
+            .help("Fetch this account and show it on the Limits screen")
+        }
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
+        .font(.caption)
+        .fixedSize()
+    }
+
+    private var actionsMenu: some View {
+        Menu {
+            if profile.canSignInAgain {
+                Button("Sign in again") { Task { await usage.signIn(profile) } }
+            }
+            if profile.credentialKind == .keychainSecret, !profile.isSystem {
+                Button("Update token…") { router.sheet = .credential(profile) }
+            }
+            Button("Refresh now") { Task { await usage.refresh(profile) } }
+            Button("Rename…") {
+                draftName = snapshot.name
+                isRenaming = true
+            }
+            if !profile.isSystem {
+                Divider()
+                Button("Remove account", role: .destructive) { confirmingRemoval = true }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More actions")
     }
 
     private var dotColor: Color {
@@ -229,57 +284,7 @@ private struct AccountRow: View {
         if let issue = snapshot.issue { return issue.title }
         guard let quota = snapshot.quota else { return "Waiting for first refresh…" }
         guard let window = quota.headlineWindow else { return "Signed in" }
-        return "\(Formatting.percent(window.remainingPercent)) remaining · \(window.label)"
-    }
-
-    private var controls: some View {
-        HStack(spacing: 10) {
-            // Labelled rather than icon-only: "shown in the menu bar" and
-            // "tracked at all" are not concepts a glyph can carry on its own.
-            Toggle(isOn: Binding(
-                get: { profile.showsInMenuBar },
-                set: { accounts.setShowsInMenuBar(profile.id, $0) }
-            )) {
-                Label("Menu Bar", systemImage: "menubar.arrow.up.rectangle")
-            }
-            .toggleStyle(.button)
-            .help("Show this account's remaining percentage in the menu bar")
-
-            Toggle(isOn: Binding(
-                get: { profile.isEnabled },
-                set: { accounts.setEnabled(profile.id, $0) }
-            )) {
-                Label("Track", systemImage: profile.isEnabled ? "eye" : "eye.slash")
-            }
-            .toggleStyle(.button)
-            .help("Track this account and show it on the Limits screen")
-
-            Menu {
-                if profile.canSignInAgain {
-                    Button("Sign in again") { Task { await usage.signIn(profile) } }
-                }
-                if profile.credentialKind == .keychainSecret, !profile.isSystem {
-                    Button("Update token…") { router.sheet = .credential(profile) }
-                }
-                Button("Refresh now") { Task { await usage.refresh(profile) } }
-                Button("Rename…") {
-                    draftName = snapshot.name
-                    isRenaming = true
-                }
-                if !profile.isSystem {
-                    Divider()
-                    Button("Remove account", role: .destructive) { confirmingRemoval = true }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("More actions")
-        }
-        .font(.caption)
-        .labelStyle(.titleAndIcon)
+        return "\(Formatting.percent(window.remainingPercent)) left · \(window.label)"
     }
 
     private func apply(_ remedy: AccountIssue.Remedy) {

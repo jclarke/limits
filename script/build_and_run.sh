@@ -38,6 +38,7 @@ for resource_bundle in "$BIN_DIR"/*.bundle; do
   cp -R "$resource_bundle" "$APP_BUNDLE/Contents/Resources/"
 done
 printf 'APPL????' > "$APP_BUNDLE/Contents/PkgInfo"
+cp "$ROOT_DIR/Resources/Limits.icns" "$APP_BUNDLE/Contents/Resources/Limits.icns"
 
 echo "==> Signing ($SIGNING_IDENTITY)"
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$APP_BUNDLE" 2>/dev/null
