@@ -125,11 +125,29 @@ fi
 echo "==> Signing update and regenerating appcast"
 # generate_appcast signs each archive with the private key from the keychain
 # and writes the enclosure URLs pointing at the GitHub release assets.
+# It stamps every file with this release's prefix, so older zips would 404
+# unless their URLs are rewritten to the tag they were actually published on.
+# Deltas are new files and stay on this release.
 "$SPARKLE_BIN/generate_appcast" \
   --download-url-prefix "https://github.com/$REPO/releases/download/v$VERSION/" \
   --link "https://github.com/$REPO" \
   -o "$APPCAST" \
   "$RELEASE_DIR"
+
+python3 - "$APPCAST" "$REPO" <<'PY'
+import re, sys
+from pathlib import Path
+appcast, repo = Path(sys.argv[1]), sys.argv[2]
+text = appcast.read_text()
+prefix = rf"https://github.com/{re.escape(repo)}/releases/download/v[^/\"<>]+/Limits-"
+text, n = re.subn(
+    prefix + r"([0-9]+\.[0-9]+\.[0-9]+)\.zip",
+    rf"https://github.com/{repo}/releases/download/v\1/Limits-\1.zip",
+    text,
+)
+appcast.write_text(text)
+print(f"    rewrote {n} zip enclosure URL(s) onto their own tags")
+PY
 
 if [[ "$MODE" == "--dry-run" ]]; then
   echo "Dry run: built $ARCHIVE and updated $APPCAST; nothing pushed."
@@ -152,7 +170,10 @@ echo "==> Publishing to GitHub"
 #   3. Only then push main, so the appcast goes live after the download it
 #      points at, never before.
 git -C "$ROOT_DIR" push origin "refs/tags/v$VERSION"
-gh release create "v$VERSION" "$ARCHIVE" \
+# Deltas are generated next to the zip and must ship on this release;
+# generate_appcast already pointed their enclosure URLs here.
+shopt -s nullglob
+gh release create "v$VERSION" "$ARCHIVE" "$RELEASE_DIR"/*.delta \
   --repo "$REPO" \
   --title "Limits $VERSION" \
   --verify-tag \
