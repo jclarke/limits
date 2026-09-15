@@ -17,6 +17,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
+    private var appearanceObservation: NSKeyValueObservation?
 
     init(accounts: AccountsStore, usage: UsageStore, router: Router) {
         self.accounts = accounts
@@ -49,6 +50,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .debounce(for: .milliseconds(80), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.updateTitle() }
             .store(in: &cancellables)
+
+        // The marks are baked at the menu bar's current foreground color, so
+        // they have to be redrawn when the user switches theme — otherwise
+        // they stay black on a newly dark menu bar.
+        appearanceObservation = item.button?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.updateTitle() }
+        }
 
         updateTitle()
     }
@@ -114,13 +122,42 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         ])
     }
 
-    /// The provider's real brand mark, tinted to its color.
+    /// The provider's brand mark, drawn in the menu bar's own foreground color
+    /// rather than the provider's brand tint.
+    ///
+    /// Brand colors look right on a card but not up here: the menu bar sits on
+    /// whatever wallpaper the user has, so a blue mark on a blue desktop
+    /// disappears and a yellow one washes out. Every other status item is
+    /// monochrome for exactly this reason. The brand tints still carry the
+    /// identity everywhere the app controls its own background.
     private func append(provider: Provider, to title: NSMutableAttributedString) {
-        guard let image = ProviderLogo.tinted(provider, pointSize: 13, color: provider.nsTint) else {
-            append(symbol: provider.symbolName, color: provider.nsTint, to: title)
+        guard let image = ProviderLogo.tinted(
+            provider,
+            pointSize: 13,
+            color: menuBarForeground
+        ) else {
+            append(symbol: provider.symbolName, color: menuBarForeground, to: title)
             return
         }
         title.append(attachment(image))
+    }
+
+    /// `labelColor` resolved against the *button's* appearance, not the app's.
+    /// The menu bar has its own light/dark state — it can be dark while the
+    /// app is light — and this is what makes the marks match the clock and
+    /// every other status item beside them.
+    private var menuBarForeground: NSColor {
+        guard let appearance = statusItem?.button?.effectiveAppearance else {
+            return .labelColor
+        }
+        var resolved = NSColor.labelColor
+        appearance.performAsCurrentDrawingAppearance {
+            // usingColorSpace snapshots the dynamic color into a concrete one;
+            // assigning `.labelColor` directly would stay dynamic and resolve
+            // again later against the wrong appearance.
+            resolved = NSColor.labelColor.usingColorSpace(.sRGB) ?? .labelColor
+        }
+        return resolved
     }
 
     private func attachment(_ image: NSImage) -> NSAttributedString {
