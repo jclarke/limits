@@ -27,6 +27,11 @@ final class AccountsStore: ObservableObject {
         let name: String
     }
 
+    /// The account a provider's own tools are signed into right now, by that
+    /// provider's identifier. Lets the live row be hidden when it duplicates
+    /// an account Limits already captured.
+    @Published var liveAccountKeys: [Provider: String] = [:]
+
     struct SystemOverride: Codable, Hashable, Sendable {
         var isEnabled: Bool = true
         var showsInMenuBar: Bool = true
@@ -90,6 +95,18 @@ final class AccountsStore: ObservableObject {
             }
         }
 
+        let owned = managed
+            .filter { $0.provider == provider }
+            .sorted { $0.createdAt < $1.createdAt }
+
+        // The live account is already on screen if it was captured, and
+        // showing the same numbers twice under two names is worse than
+        // showing one.
+        if let liveKey = liveAccountKeys[provider],
+           owned.contains(where: { $0.providerAccountKey == liveKey }) {
+            return owned
+        }
+
         var system = AccountProfile.system(provider)
         if let override = systemOverrides[provider] {
             system.isEnabled = override.isEnabled
@@ -97,9 +114,6 @@ final class AccountsStore: ObservableObject {
             if !override.displayName.isEmpty { system.displayName = override.displayName }
             if !override.menuBarLabel.isEmpty { system.menuBarLabel = override.menuBarLabel }
         }
-        let owned = managed
-            .filter { $0.provider == provider }
-            .sorted { $0.createdAt < $1.createdAt }
         return [system] + owned
     }
 
@@ -152,6 +166,46 @@ final class AccountsStore: ObservableObject {
 
     /// Creates a managed profile. `isolatedCLI` providers get an app-owned
     /// home with owner-only permissions; credential providers get none.
+    /// Saves a copy of the session a provider's CLI just produced as its own
+    /// account. The credential goes to Limits' Keychain namespace, never to a
+    /// file, and the provider's identifier is kept so the live row can be
+    /// recognised as the same account.
+    @discardableResult
+    func captureAccount(
+        provider: Provider,
+        displayName: String,
+        providerAccountKey: String,
+        secret: String
+    ) throws -> AccountProfile {
+        // Re-capturing an account already held refreshes it in place rather
+        // than adding a second row for the same person.
+        if let existing = managed.first(where: {
+            $0.provider == provider && $0.providerAccountKey == providerAccountKey
+        }) {
+            try AccountSecretStore.save(secret, for: existing.id)
+            return existing
+        }
+
+        let id = AccountID.managed(UUID())
+        try AccountSecretStore.save(secret, for: id)
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profile = AccountProfile(
+            id: id,
+            provider: provider,
+            displayName: trimmed.isEmpty ? defaultName(for: provider) : trimmed,
+            kind: .managed,
+            configurationDirectory: nil,
+            isEnabled: true,
+            showsInMenuBar: true,
+            createdAt: .now,
+            providerAccountKey: providerAccountKey
+        )
+        managed.append(profile)
+        trackedProviders.insert(provider)
+        persist()
+        return profile
+    }
+
     func createManagedAccount(provider: Provider, displayName: String) throws -> AccountProfile {
         guard provider.supportsMultipleAccounts else {
             throw AccountIssue.other(
@@ -341,7 +395,10 @@ final class AccountsStore: ObservableObject {
     private static func isValid(_ profile: AccountProfile) -> Bool {
         guard profile.kind == .managed else { return false }
         guard let directory = profile.configurationDirectory else {
-            return profile.provider.credentialKind == .keychainSecret
+            // A captured account keeps its credential in the Keychain and has
+            // no filesystem home to validate.
+            return profile.provider.capturesCredentials
+                || profile.provider.credentialKind == .keychainSecret
         }
         return URL(fileURLWithPath: directory).standardizedFileURL.path
             .hasPrefix(accountsDirectory.standardizedFileURL.path)

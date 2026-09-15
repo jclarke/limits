@@ -81,15 +81,26 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
         // Grok's own auth file is keyed per account, so a new sign-in adds
         // rather than replaces — no app-owned profile needed.
         case .claude, .codex, .grok: true
-        // Antigravity and Cursor each store one credential under a fixed
-        // Keychain identity, so a second sign-in overwrites the first.
-        case .antigravity, .cursor: false
+        // Cursor overwrites its one credential on every sign-in, but its
+        // sessions run for months, so Limits can keep a copy of each.
+        case .cursor: true
+        // Antigravity's sessions last about an hour, so a saved copy would be
+        // stale before it was useful.
+        case .antigravity: false
         }
     }
 
     /// Accounts this provider's own tools already hold, which Limits lists
     /// rather than creating.
     var discoversAccounts: Bool { self == .grok }
+
+    /// Whether an extra account is made by saving a copy of the session the
+    /// provider's CLI just produced.
+    ///
+    /// Cursor holds one credential at a time, so a second account can only
+    /// exist as a copy Limits keeps. That is only worth doing because its
+    /// sessions last months rather than the hour Antigravity's do.
+    var capturesCredentials: Bool { self == .cursor }
 
     /// Whether Limits can run this provider's sign-in itself, including for
     /// the account the provider's own tools already use.

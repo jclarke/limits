@@ -40,9 +40,12 @@ struct QuotaFetcher: Sendable {
                 keychainInteraction: keychainInteraction
             )
         case .cursor:
-            // Cursor's CLI and IDE share one credential, so there is no
-            // per-account routing to do.
-            return try await CursorUsageService().fetch(now: now)
+            // A captured account reads the copy Limits saved; the live one
+            // reads whatever Cursor is signed into now.
+            return try await CursorUsageService().fetch(
+                capturedToken: profile.isSystem ? nil : try storedSecret(profile),
+                now: now
+            )
         case .grok:
             // Grok's own auth file holds every signed-in account, so the
             // profile only has to say which one it refers to.

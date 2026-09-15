@@ -82,6 +82,7 @@ final class UsageStore: ObservableObject {
         defer { isRefreshingAll = false }
         // A sign-in performed outside Limits should show up on its own.
         accounts.refreshDiscoveredAccounts()
+        await refreshLiveAccountKeys()
         let profiles = accounts.allProfiles.filter(\.isEnabled)
         // Concurrently, but each account still guarded by `inFlight`.
         await withTaskGroup(of: Void.self) { group in
@@ -165,12 +166,43 @@ final class UsageStore: ObservableObject {
         loggingIn.insert(marker)
         defer { loggingIn.remove(marker) }
         do {
+            // Save the account Cursor is currently signed into before the new
+            // sign-in replaces it, so adding a second account keeps the first
+            // rather than swapping it.
+            if provider.capturesCredentials { await captureCurrentAccount(provider: provider) }
+
             try await AccountLoginService().signInSharedHome(provider: provider)
+
+            if provider.capturesCredentials { await captureCurrentAccount(provider: provider) }
             accounts.refreshDiscoveredAccounts()
             await refreshAll()
         } catch {
             let issue = (error as? AccountIssue) ?? .other(error.localizedDescription)
             lastLoginError = issue.message(provider: provider)
+        }
+    }
+
+    /// Copies whatever the provider is signed into now into its own account.
+    /// Only ever called from an explicit "add account" action.
+    private func captureCurrentAccount(provider: Provider) async {
+        guard provider == .cursor,
+              let identity = await CursorAccountCapture.currentIdentity(),
+              CursorAccountCapture.isWorthCapturing(identity) else { return }
+        try? accounts.captureAccount(
+            provider: provider,
+            displayName: identity.suggestedName,
+            providerAccountKey: identity.subject,
+            secret: identity.token
+        )
+    }
+
+    /// Records which account a provider is signed into now, so a captured copy
+    /// of the same account is not also listed.
+    private func refreshLiveAccountKeys() async {
+        guard accounts.trackedProviders.contains(.cursor) else { return }
+        let subject = await CursorAccountCapture.currentIdentity()?.subject
+        if accounts.liveAccountKeys[.cursor] != subject {
+            accounts.liveAccountKeys[.cursor] = subject
         }
     }
 

@@ -108,6 +108,8 @@ struct Chip: View {
         Text(text)
             .font(.system(size: 9.5, weight: .semibold))
             .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
             .padding(.horizontal, 5)
             .padding(.vertical, 1.5)
             .background(
@@ -115,7 +117,6 @@ struct Chip: View {
                     light: (0x000000, 0.06), dark: (0xFFFFFF, 0.10)
                 ))
             )
-            .fixedSize()
     }
 }
 

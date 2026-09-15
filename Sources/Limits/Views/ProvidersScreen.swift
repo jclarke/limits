@@ -67,6 +67,8 @@ private struct ProviderSection: View {
 
     let provider: Provider
 
+    @State private var confirmingCapture = false
+
     private var isTracked: Bool { accounts.trackedProviders.contains(provider) }
 
     var body: some View {
@@ -87,6 +89,19 @@ private struct ProviderSection: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+        .alert("Add another \(provider.displayName) account?", isPresented: $confirmingCapture) {
+            Button("Continue") { Task { await usage.signInSharedHome(provider: provider) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            // Cursor holds one session at a time, so this genuinely changes
+            // which account their editor is using. Saying so beforehand beats
+            // letting them discover it.
+            Text("""
+            \(provider.displayName) signs in one account at a time, so this will switch \(provider.displayName) itself to the account you choose.
+
+            Limits saves a copy of the session you're on now, so both accounts keep showing here.
+            """)
+        }
     }
 
     private var header: some View {
@@ -128,6 +143,9 @@ private struct ProviderSection: View {
         if provider.discoversAccounts {
             return "Lists every account \(provider.displayName)'s CLI is signed into. Signing in again adds another."
         }
+        if provider.capturesCredentials {
+            return "\(provider.displayName) holds one session at a time, so Limits saves a copy of each account you sign in to."
+        }
         switch provider.credentialKind {
         case .isolatedCLI:
             return "Sign in to as many accounts as you like — each gets its own isolated profile."
@@ -138,7 +156,10 @@ private struct ProviderSection: View {
 
     private var addAccountRow: some View {
         Button {
-            if provider.discoversAccounts {
+            if provider.capturesCredentials {
+                // Switching the user's editor deserves a heads-up first.
+                confirmingCapture = true
+            } else if provider.discoversAccounts {
                 // Its own CLI owns the credential store, so signing in is the
                 // whole flow — there is nothing for Limits to name or hold.
                 Task { await usage.signInSharedHome(provider: provider) }
@@ -203,8 +224,14 @@ private struct AccountRow: View {
                         Text(snapshot.name)
                             .font(.system(size: 12, weight: .medium))
                             .kerning(-0.08)
+                            // The name identifies the row, so it must never
+                            // break mid-word to make space for a plan chip.
+                            .lineLimit(1)
+                            .fixedSize()
                         if profile.isSystem { Chip(text: "System") }
-                        if let plan = snapshot.quota?.planName { Chip(text: plan) }
+                        if let plan = snapshot.quota?.planName {
+                            Chip(text: plan).layoutPriority(-1)
+                        }
                     }
                     Text(statusText)
                         .font(.system(size: 10.5))
