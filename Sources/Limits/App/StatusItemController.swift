@@ -87,9 +87,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 if index > 0 { title.append(plain("  ")) }
                 append(provider: snapshot.provider, to: title)
                 if labelled.contains(snapshot.provider) {
+                    // Full menu bar foreground, not a secondary tone: the
+                    // label has to be readable at two characters against an
+                    // arbitrary wallpaper, and anything dimmer disappears.
                     title.append(plain(
                         " " + snapshot.profile.resolvedMenuBarLabel(provider: snapshot.provider),
-                        color: .secondaryLabelColor,
+                        color: menuBarForeground,
                         weight: .bold
                     ))
                 }
