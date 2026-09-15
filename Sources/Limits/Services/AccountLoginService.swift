@@ -1,0 +1,188 @@
+import Darwin
+import Foundation
+
+/// Runs a provider's own OAuth login inside an app-owned configuration home.
+/// The resulting tokens stay owned by that provider's CLI; Limits only reads
+/// them. This is what makes a second (or fifth) account possible without ever
+/// touching the user's real `~/.claude` or `~/.codex` session.
+/// Derived from TokenRemain (Apache-2.0); see NOTICE.
+struct AccountLoginService: Sendable {
+    /// Environment for a spawned provider CLI, pinned to an isolated home.
+    ///
+    /// Routing overrides are stripped deliberately: if the user's shell points
+    /// Claude or Codex at a proxy or a raw API key, inheriting that would log
+    /// the new profile into something other than the subscription account the
+    /// user is trying to add.
+    enum Environment {
+        private static let claudeRoutingOverrides = [
+            "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BEDROCK_BASE_URL", "ANTHROPIC_VERTEX_BASE_URL",
+            "ANTHROPIC_FOUNDRY_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"
+        ]
+        private static let codexRoutingOverrides = ["OPENAI_BASE_URL", "OPENAI_API_BASE", "OPENAI_API_KEY"]
+
+        static func build(
+            provider: Provider,
+            configurationDirectory: URL,
+            base: [String: String] = ProcessInfo.processInfo.environment
+        ) -> [String: String] {
+            var environment = base
+            switch provider {
+            case .claude:
+                claudeRoutingOverrides.forEach { environment.removeValue(forKey: $0) }
+                environment["CLAUDE_CONFIG_DIR"] = configurationDirectory.path
+            case .codex:
+                codexRoutingOverrides.forEach { environment.removeValue(forKey: $0) }
+                environment["CODEX_HOME"] = configurationDirectory.path
+            case .cursor, .grok, .antigravity:
+                break
+            }
+            return environment
+        }
+    }
+
+    /// Signs the given profile in, then verifies a session actually exists.
+    /// Verification matters: both CLIs can exit 0 after the user closes the
+    /// browser tab without completing consent.
+    func login(provider: Provider, configurationDirectory: URL) async throws {
+        try FileManager.default.createDirectory(
+            at: configurationDirectory,
+            withIntermediateDirectories: true,
+            // Owner-only: these directories hold live OAuth material.
+            attributes: [.posixPermissions: 0o700]
+        )
+        switch provider {
+        case .claude:
+            try await loginClaude(configurationDirectory: configurationDirectory)
+        case .codex:
+            try await loginCodex(configurationDirectory: configurationDirectory)
+        case .cursor, .grok, .antigravity:
+            throw AccountIssue.other("\(provider.displayName) has no CLI sign-in. Add this account with a token instead.")
+        }
+    }
+
+    // MARK: - Claude
+
+    /// `claude auth login` is an Ink TUI. Pointing stdout at `/dev/null` makes
+    /// it believe the first browser open failed, so it launches the OAuth flow
+    /// a *second* time. Give it a real PTY, drain the paint so it never blocks
+    /// on a full buffer, and let the official callback finish.
+    private func loginClaude(configurationDirectory: URL) async throws {
+        guard let executable = Self.executable(for: .claude) else {
+            throw AccountIssue.cliMissing(executable: "claude")
+        }
+        try await runInPTY(
+            executable: executable,
+            arguments: ["auth", "login", "--claudeai"],
+            environment: Self.environment(for: .claude, executable: executable, directory: configurationDirectory)
+        )
+        guard try await claudeIsLoggedIn(configurationDirectory: configurationDirectory) else {
+            throw AccountIssue.other("Claude finished without creating a signed-in profile.")
+        }
+    }
+
+    private func claudeIsLoggedIn(configurationDirectory: URL) async throws -> Bool {
+        guard let executable = Self.executable(for: .claude) else {
+            throw AccountIssue.cliMissing(executable: "claude")
+        }
+        let data = try await ProcessRunner.run(
+            executable.path,
+            arguments: ["auth", "status", "--json"],
+            environment: Self.environment(for: .claude, executable: executable, directory: configurationDirectory),
+            timeout: 30
+        )
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return object["loggedIn"] as? Bool == true
+    }
+
+    // MARK: - Codex
+
+    private func loginCodex(configurationDirectory: URL) async throws {
+        guard let executable = Self.executable(for: .codex) else {
+            throw AccountIssue.cliMissing(executable: "codex")
+        }
+        let environment = Self.environment(for: .codex, executable: executable, directory: configurationDirectory)
+        // The browser round-trip is user-paced, so allow generous time.
+        _ = try await ProcessRunner.run(
+            executable.path,
+            arguments: ["login"],
+            environment: environment,
+            timeout: 300
+        )
+        let data = try await ProcessRunner.run(
+            executable.path,
+            arguments: ["login", "status"],
+            environment: environment,
+            timeout: 30
+        )
+        let text = (String(data: data, encoding: .utf8) ?? "").lowercased()
+        guard text.contains("logged in") else {
+            throw AccountIssue.other("Codex finished without creating a signed-in profile.")
+        }
+    }
+
+    // MARK: - Shared
+
+    static func executable(for provider: Provider) -> URL? {
+        guard let name = provider.cliExecutableName else { return nil }
+        return CLIResolver.resolve(named: name, appBundleName: provider.cliAppBundleName)
+    }
+
+    private static func environment(
+        for provider: Provider,
+        executable: URL,
+        directory: URL
+    ) -> [String: String] {
+        var environment = Environment.build(provider: provider, configurationDirectory: directory)
+        // A GUI app inherits no shell PATH, so a Node-based CLI would fail to
+        // find its own interpreter without this.
+        environment["PATH"] = CLIResolver.launchPath(existing: environment["PATH"], executable: executable)
+        return environment
+    }
+
+    /// Runs a CLI attached to a pseudo-terminal, discarding its paint. Used
+    /// for TUI logins that misbehave when their output is not a terminal.
+    private func runInPTY(executable: URL, arguments: [String], environment: [String: String]) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            var master: Int32 = -1
+            var slave: Int32 = -1
+            var windowSize = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
+            guard openpty(&master, &slave, nil, nil, &windowSize) == 0 else {
+                throw AccountIssue.other("Could not allocate a terminal for the sign-in flow.")
+            }
+            defer { Darwin.close(master) }
+
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = arguments
+            var environment = environment
+            environment["TERM"] = "xterm-256color"
+            process.environment = environment
+
+            let terminal = FileHandle(fileDescriptor: slave, closeOnDealloc: false)
+            process.standardInput = terminal
+            process.standardOutput = terminal
+            process.standardError = terminal
+            try process.run()
+            // The parent must drop its copy or the child never sees EOF.
+            Darwin.close(slave)
+
+            // Non-blocking drain: a full PTY buffer would otherwise wedge the
+            // child mid-login while it waits to paint.
+            let flags = fcntl(master, F_GETFL)
+            _ = fcntl(master, F_SETFL, flags | O_NONBLOCK)
+            var bytes = [UInt8](repeating: 0, count: 8_192)
+            while process.isRunning {
+                while Darwin.read(master, &bytes, bytes.count) > 0 {}
+                usleep(50_000)
+            }
+            process.waitUntilExit()
+            while Darwin.read(master, &bytes, bytes.count) > 0 {}
+
+            guard process.terminationStatus == 0 else {
+                throw AccountIssue.other("Sign-in did not complete (exit code \(process.terminationStatus)).")
+            }
+        }.value
+    }
+}

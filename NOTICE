@@ -1,0 +1,6 @@
+Limits
+Copyright 2026 Joseph Clarke
+
+Portions of the provider credential-discovery and quota-parsing logic in this
+product are derived from the TokenRemain project (Copyright 2026 Dongheng Li),
+licensed under the Apache License, Version 2.0.

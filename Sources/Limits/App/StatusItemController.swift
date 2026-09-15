@@ -1,0 +1,179 @@
+import AppKit
+import Combine
+import SwiftUI
+
+/// Owns the menu bar item and its popover.
+///
+/// The title is built as an `NSAttributedString` with the provider glyphs
+/// inlined as text attachments rather than as a SwiftUI `MenuBarExtra` label:
+/// AppKit then sizes the item to its content and renders each glyph in its own
+/// color, neither of which a SwiftUI menu bar label does reliably.
+@MainActor
+final class StatusItemController: NSObject, NSPopoverDelegate {
+    private let accounts: AccountsStore
+    private let usage: UsageStore
+    private let router: Router
+
+    private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
+    private var cancellables: Set<AnyCancellable> = []
+
+    /// Past a handful of accounts the menu bar becomes unreadable and starts
+    /// crowding out other apps' items, so show the tightest few and a count.
+    private static let maximumShown = 4
+
+    init(accounts: AccountsStore, usage: UsageStore, router: Router) {
+        self.accounts = accounts
+        self.usage = usage
+        self.router = router
+        super.init()
+    }
+
+    func install() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.target = self
+        item.button?.action = #selector(togglePopover(_:))
+        item.button?.setAccessibilityLabel("Limits")
+        statusItem = item
+
+        popover.behavior = .transient
+        popover.animates = false
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(
+            rootView: PopoverView()
+                .environmentObject(accounts)
+                .environmentObject(usage)
+                .environmentObject(router)
+        )
+
+        // Rebuild the title whenever either store publishes a change.
+        usage.objectWillChange
+            .merge(with: accounts.objectWillChange)
+            // Coalesce the burst of updates a refresh round produces.
+            .debounce(for: .milliseconds(80), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.updateTitle() }
+            .store(in: &cancellables)
+
+        updateTitle()
+    }
+
+    // MARK: - Title
+
+    private var shown: [AccountSnapshot] {
+        let all = usage.menuBarSnapshots
+        guard all.count > Self.maximumShown else { return all }
+        // When there is not room for everything, the accounts closest to
+        // running out are the ones worth the space.
+        return Array(
+            all.sorted {
+                ($0.quota?.lowestRemainingPercent ?? 101) < ($1.quota?.lowestRemainingPercent ?? 101)
+            }
+            .prefix(Self.maximumShown)
+        )
+    }
+
+    private func updateTitle() {
+        guard let button = statusItem?.button else { return }
+        let snapshots = shown
+        let hidden = max(0, usage.menuBarSnapshots.count - snapshots.count)
+        let title = NSMutableAttributedString()
+
+        if snapshots.isEmpty {
+            append(symbol: "gauge.with.dots.needle.67percent", color: .secondaryLabelColor, to: title)
+        } else {
+            for (index, snapshot) in snapshots.enumerated() {
+                if index > 0 { title.append(plain("  ")) }
+                append(
+                    symbol: snapshot.provider.symbolName,
+                    color: snapshot.provider.nsTint,
+                    to: title
+                )
+                title.append(plain(" " + value(for: snapshot), color: color(for: snapshot)))
+            }
+            if hidden > 0 { title.append(plain("  +\(hidden)", color: .secondaryLabelColor)) }
+        }
+
+        if !usage.attentionSnapshots.isEmpty {
+            title.append(plain("  "))
+            append(symbol: "exclamationmark.triangle.fill", color: .systemOrange, to: title)
+        }
+
+        button.attributedTitle = title
+        button.setAccessibilityLabel(accessibilityText(snapshots))
+    }
+
+    /// An account with an auth problem shows a dash: the menu bar must never
+    /// imply fresh numbers it does not have.
+    private func value(for snapshot: AccountSnapshot) -> String {
+        guard snapshot.issue == nil, let remaining = snapshot.quota?.lowestRemainingPercent else {
+            return "—"
+        }
+        return Formatting.percent(remaining)
+    }
+
+    private func color(for snapshot: AccountSnapshot) -> NSColor {
+        guard snapshot.issue == nil, let remaining = snapshot.quota?.lowestRemainingPercent else {
+            return .secondaryLabelColor
+        }
+        // Only call out the states that need action; a healthy figure stays
+        // in the menu bar's own color so it reads as ordinary status.
+        switch remaining {
+        case ..<10: return .systemRed
+        case ..<25: return .systemOrange
+        default: return .labelColor
+        }
+    }
+
+    private func plain(_ text: String, color: NSColor = .labelColor) -> NSAttributedString {
+        NSAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: color
+        ])
+    }
+
+    private func append(symbol: String, color: NSColor, to title: NSMutableAttributedString) {
+        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) else { return }
+        let configured = image.withSymbolConfiguration(
+            .init(pointSize: 12, weight: .medium)
+        ) ?? image
+        // A non-template image keeps the provider's own color instead of being
+        // flattened to the menu bar's tint.
+        configured.isTemplate = false
+        let tinted = NSImage(size: configured.size, flipped: false) { rect in
+            configured.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.isTemplate = false
+
+        let attachment = NSTextAttachment()
+        attachment.image = tinted
+        // Sit the glyph on the text baseline rather than the line box.
+        attachment.bounds = CGRect(x: 0, y: -2, width: tinted.size.width, height: tinted.size.height)
+        title.append(NSAttributedString(attachment: attachment))
+    }
+
+    private func accessibilityText(_ snapshots: [AccountSnapshot]) -> String {
+        guard !snapshots.isEmpty else { return "Limits: no accounts shown" }
+        let parts = snapshots.map { "\($0.provider.displayName) \(value(for: $0))" }
+        return "Limits: " + parts.joined(separator: ", ")
+            + (usage.attentionSnapshots.isEmpty ? "" : ". Some accounts need attention.")
+    }
+
+    // MARK: - Popover
+
+    @objc private func togglePopover(_ sender: Any?) {
+        guard let button = statusItem?.button else { return }
+        if popover.isShown {
+            popover.performClose(sender)
+            return
+        }
+        // Refresh on open so a popover the user just summoned is never stale.
+        Task { await usage.refreshAll() }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+    }
+
+    func closePopover() { popover.performClose(nil) }
+}
