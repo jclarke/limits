@@ -60,6 +60,9 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
     let createdAt: Date
     /// The provider's own identifier for a discovered account. Nil otherwise.
     var providerAccountKey: String?
+    /// User override for the menu bar's two-character label. Nil derives one
+    /// from the account name.
+    var menuBarLabel: String?
 
     var isSystem: Bool { kind == .system }
     var isDiscovered: Bool { kind == .discovered }
@@ -79,6 +82,31 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
 
     var configurationDirectoryURL: URL? {
         configurationDirectory.map { URL(fileURLWithPath: $0) }
+    }
+
+    /// Two characters that tell this account apart from its siblings in the
+    /// menu bar, where there is no room for a full name.
+    ///
+    /// Initials when the name reads as words ("Joe Clarke" → JC), otherwise
+    /// the first two letters ("ezHomeSearch" → EZ). Only ever shown when a
+    /// provider has more than one account in the menu bar, so single-account
+    /// setups are unchanged.
+    func resolvedMenuBarLabel(provider: Provider) -> String {
+        if let menuBarLabel, !menuBarLabel.isEmpty { return menuBarLabel }
+        return Self.derivedLabel(from: resolvedDisplayName(provider: provider))
+    }
+
+    static func derivedLabel(from name: String) -> String {
+        let words = name
+            .split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "_" })
+            .filter { $0.contains(where: \.isLetter) }
+        if words.count >= 2 {
+            let initials = words.prefix(2).compactMap { $0.first(where: \.isLetter) }
+            if initials.count == 2 { return String(initials).uppercased() }
+        }
+        let letters = name.filter { $0.isLetter || $0.isNumber }
+        guard !letters.isEmpty else { return "??" }
+        return String(letters.prefix(2)).uppercased()
     }
 
     /// Falls back to the provider name so a row is never blank.

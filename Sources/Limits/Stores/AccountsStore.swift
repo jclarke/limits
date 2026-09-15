@@ -31,6 +31,25 @@ final class AccountsStore: ObservableObject {
         var isEnabled: Bool = true
         var showsInMenuBar: Bool = true
         var displayName: String = ""
+        /// Empty means "derive one from the name".
+        var menuBarLabel: String = ""
+
+        init() {}
+
+        /// Decoded field by field rather than by synthesis.
+        ///
+        /// Swift's synthesized `init(from:)` ignores property defaults: a key
+        /// missing from stored JSON throws, and because the caller decodes
+        /// with `try?`, one newly added field would silently discard every
+        /// account the user had configured. Adding a field must never cost
+        /// someone their setup.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+            showsInMenuBar = try container.decodeIfPresent(Bool.self, forKey: .showsInMenuBar) ?? true
+            displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+            menuBarLabel = try container.decodeIfPresent(String.self, forKey: .menuBarLabel) ?? ""
+        }
     }
 
     private let defaults: UserDefaults
@@ -65,6 +84,7 @@ final class AccountsStore: ObservableObject {
                     profile.isEnabled = override.isEnabled
                     profile.showsInMenuBar = override.showsInMenuBar
                     if !override.displayName.isEmpty { profile.displayName = override.displayName }
+                    if !override.menuBarLabel.isEmpty { profile.menuBarLabel = override.menuBarLabel }
                 }
                 return profile
             }
@@ -75,6 +95,7 @@ final class AccountsStore: ObservableObject {
             system.isEnabled = override.isEnabled
             system.showsInMenuBar = override.showsInMenuBar
             if !override.displayName.isEmpty { system.displayName = override.displayName }
+            if !override.menuBarLabel.isEmpty { system.menuBarLabel = override.menuBarLabel }
         }
         let owned = managed
             .filter { $0.provider == provider }
@@ -195,6 +216,23 @@ final class AccountsStore: ObservableObject {
         persist()
     }
 
+    /// Sets the menu bar's two-character label. An empty value restores the
+    /// one derived from the account name.
+    func setMenuBarLabel(_ id: AccountID, _ label: String) {
+        let normalized = String(
+            label.filter { $0.isLetter || $0.isNumber }.prefix(2)
+        ).uppercased()
+        guard profile(id: id)?.menuBarLabel ?? "" != normalized else { return }
+        if let index = managed.firstIndex(where: { $0.id == id }) {
+            managed[index].menuBarLabel = normalized.isEmpty ? nil : normalized
+        } else if let provider = systemProvider(for: id) {
+            systemOverrides[provider, default: SystemOverride()].menuBarLabel = normalized
+        } else {
+            discoveredOverrides[id.rawValue, default: SystemOverride()].menuBarLabel = normalized
+        }
+        persist()
+    }
+
     func setShowsInMenuBar(_ id: AccountID, _ shows: Bool) {
         guard profile(id: id)?.showsInMenuBar != shows else { return }
         if let index = managed.firstIndex(where: { $0.id == id }) {
@@ -237,6 +275,32 @@ final class AccountsStore: ObservableObject {
         var tracked: [Provider]
         var systemOverrides: [String: SystemOverride]
         var discoveredOverrides: [String: SystemOverride]?
+
+        init(
+            managed: [AccountProfile],
+            tracked: [Provider],
+            systemOverrides: [String: SystemOverride],
+            discoveredOverrides: [String: SystemOverride]?
+        ) {
+            self.managed = managed
+            self.tracked = tracked
+            self.systemOverrides = systemOverrides
+            self.discoveredOverrides = discoveredOverrides
+        }
+
+        /// Tolerant for the same reason as `SystemOverride`: a decode failure
+        /// here resets the user's entire configuration.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            managed = try container.decodeIfPresent([AccountProfile].self, forKey: .managed) ?? []
+            tracked = try container.decodeIfPresent([Provider].self, forKey: .tracked) ?? []
+            systemOverrides = try container.decodeIfPresent(
+                [String: SystemOverride].self, forKey: .systemOverrides
+            ) ?? [:]
+            discoveredOverrides = try container.decodeIfPresent(
+                [String: SystemOverride].self, forKey: .discoveredOverrides
+            )
+        }
     }
 
     private func load() {

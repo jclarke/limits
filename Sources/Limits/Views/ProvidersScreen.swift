@@ -180,8 +180,17 @@ private struct AccountRow: View {
     @State private var draftName = ""
     @State private var confirmingRemoval = false
     @State private var isHovering = false
+    @State private var labelDraft = ""
 
     private var snapshot: AccountSnapshot { usage.snapshot(for: profile) }
+
+    /// The menu bar only labels accounts that share a provider with a sibling
+    /// that is also shown there.
+    private var showsMenuBarLabel: Bool {
+        accounts.profiles(for: profile.provider)
+            .filter(\.showsInMenuBar)
+            .count > 1
+    }
     private var isHighlighted: Bool { router.highlighted == profile.id }
     private var isSigningIn: Bool { usage.loggingIn.contains(profile.id) }
 
@@ -224,6 +233,7 @@ private struct AccountRow: View {
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.2), value: isHighlighted)
         .onAppear {
+            labelDraft = profile.resolvedMenuBarLabel(provider: profile.provider)
             guard isHighlighted else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 if router.highlighted == profile.id { router.highlighted = nil }
@@ -266,6 +276,27 @@ private struct AccountRow: View {
                 set: { accounts.setShowsInMenuBar(profile.id, $0) }
             ))
             .help("Show this account's remaining percentage in the menu bar")
+
+            // Only meaningful when siblings share the menu bar; with one
+            // account the provider mark already says which it is.
+            if showsMenuBarLabel {
+                TextField("", text: $labelDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .frame(width: 34)
+                    .onSubmit { accounts.setMenuBarLabel(profile.id, labelDraft) }
+                    .onChange(of: labelDraft) { _, value in
+                        // Two characters is the whole point; trim as they type
+                        // rather than letting the field accept what it cannot
+                        // show.
+                        let normalized = String(
+                            value.filter { $0.isLetter || $0.isNumber }.prefix(2)
+                        ).uppercased()
+                        if normalized != value { labelDraft = normalized }
+                    }
+                    .help("Two-character label shown beside this account in the menu bar")
+            }
 
             Toggle("Track", isOn: Binding(
                 get: { profile.isEnabled },

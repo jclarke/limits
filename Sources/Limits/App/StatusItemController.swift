@@ -77,9 +77,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if snapshots.isEmpty {
             append(symbol: "gauge.with.dots.needle.67percent", color: .secondaryLabelColor, to: title)
         } else {
+            // A label is only earned when a provider shows more than one
+            // account: with a single one the mark already identifies it, and
+            // the menu bar is too scarce to spend width on nothing.
+            let labelled = Dictionary(grouping: snapshots, by: \.provider)
+                .filter { $0.value.count > 1 }
+                .keys
             for (index, snapshot) in snapshots.enumerated() {
                 if index > 0 { title.append(plain("  ")) }
                 append(provider: snapshot.provider, to: title)
+                if labelled.contains(snapshot.provider) {
+                    title.append(plain(
+                        " " + snapshot.profile.resolvedMenuBarLabel(provider: snapshot.provider),
+                        color: .secondaryLabelColor,
+                        weight: .bold
+                    ))
+                }
                 title.append(plain(" " + value(for: snapshot), color: color(for: snapshot)))
             }
         }
@@ -115,9 +128,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
-    private func plain(_ text: String, color: NSColor = .labelColor) -> NSAttributedString {
+    private func plain(
+        _ text: String,
+        color: NSColor = .labelColor,
+        weight: NSFont.Weight = .medium
+    ) -> NSAttributedString {
         NSAttributedString(string: text, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: weight),
             .foregroundColor: color
         ])
     }
@@ -188,7 +205,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func accessibilityText(_ snapshots: [AccountSnapshot]) -> String {
         guard !snapshots.isEmpty else { return "Limits: no accounts shown" }
-        let parts = snapshots.map { "\($0.provider.displayName) \(value(for: $0))" }
+        let parts = snapshots.map { "\($0.provider.displayName) \($0.name) \(value(for: $0))" }
         return "Limits: " + parts.joined(separator: ", ")
             + (usage.attentionSnapshots.isEmpty ? "" : ". Some accounts need attention.")
     }
