@@ -55,7 +55,25 @@ Each account has two independent switches:
 - **Menu Bar** — include this account's remaining percentage in the menu bar title.
 - **Track** — fetch it at all and show it on the Limits screen and dropdown.
 
+## Icons
+
+Provider brand marks live in `Sources/Limits/Resources/ProviderIcons/` as
+monochrome SVGs, tinted per provider at render time:
+
+| Mark | Source | License |
+| --- | --- | --- |
+| Claude, Codex (OpenAI) | [Font Awesome 7](https://fontawesome.com/) brands | CC BY 4.0 (free brand icons) |
+| Cursor, Grok, Antigravity | [Lobe Icons](https://github.com/lobehub/lobe-icons) | MIT |
+
+Font Awesome has no Cursor, Grok/xAI or Antigravity brand icon — not even in
+Pro — which is why those three come from Lobe Icons.
+
+Brand names, logos and trademarks remain the property of their respective
+owners. They are used here only to identify each provider, which does not
+imply endorsement.
+
 ## Attribution
 
-Provider credential-discovery and quota-parsing logic is derived from the
-[TokenRemain](https://github.com/) project (Apache-2.0). See `NOTICE`.
+Provider credential-discovery and quota-parsing logic is derived from
+[TokenRemain](https://github.com/jclarke/token-remain) (Apache-2.0).
+See `NOTICE`.

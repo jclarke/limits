@@ -4,3 +4,12 @@ Copyright 2026 Joseph Clarke
 Portions of the provider credential-discovery and quota-parsing logic in this
 product are derived from the TokenRemain project (Copyright 2026 Dongheng Li),
 licensed under the Apache License, Version 2.0.
+
+Provider brand marks in Sources/Limits/Resources/ProviderIcons/:
+  - claude.svg, codex.svg come from Font Awesome 7 Free (CC BY 4.0),
+    https://fontawesome.com/
+  - cursor.svg, grok.svg, antigravity.svg come from Lobe Icons (MIT),
+    https://github.com/lobehub/lobe-icons
+
+Brand names, logos and trademarks are the property of their respective owners
+and are used only to identify each provider.

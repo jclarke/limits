@@ -29,6 +29,14 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp "$ROOT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+
+# SwiftPM emits bundled resources (the provider brand marks) as a separate
+# .bundle next to the binary. `Bundle.module` finds it in Contents/Resources.
+BIN_DIR="$(swift build -c "$CONFIGURATION" --package-path "$ROOT_DIR" --show-bin-path)"
+for resource_bundle in "$BIN_DIR"/*.bundle; do
+  [ -e "$resource_bundle" ] || continue
+  cp -R "$resource_bundle" "$APP_BUNDLE/Contents/Resources/"
+done
 printf 'APPL????' > "$APP_BUNDLE/Contents/PkgInfo"
 
 echo "==> Signing ($SIGNING_IDENTITY)"

@@ -103,21 +103,26 @@ struct AccountLoginService: Sendable {
             throw AccountIssue.cliMissing(executable: "codex")
         }
         let environment = Self.environment(for: .codex, executable: executable, directory: configurationDirectory)
-        // The browser round-trip is user-paced, so allow generous time.
+        // The browser round-trip is user-paced and may involve signing into
+        // Google or an SSO provider first, so allow plenty of time.
         _ = try await ProcessRunner.run(
             executable.path,
             arguments: ["login"],
             environment: environment,
-            timeout: 300
+            timeout: 900
         )
-        let data = try await ProcessRunner.run(
-            executable.path,
-            arguments: ["login", "status"],
-            environment: environment,
-            timeout: 30
-        )
-        let text = (String(data: data, encoding: .utf8) ?? "").lowercased()
-        guard text.contains("logged in") else {
+        // Verify by exit status, not by output. `codex login status` prints
+        // to stderr, and its logged-out text ("Not logged in") contains the
+        // logged-in text as a substring — so matching on the message is wrong
+        // in both directions. It exits 0 only when a session exists.
+        do {
+            _ = try await ProcessRunner.run(
+                executable.path,
+                arguments: ["login", "status"],
+                environment: environment,
+                timeout: 30
+            )
+        } catch {
             throw AccountIssue.other("Codex finished without creating a signed-in profile.")
         }
     }

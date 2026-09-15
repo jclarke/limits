@@ -61,19 +61,6 @@ struct QuotaWindowRow: View {
     }
 }
 
-/// Provider mark used in headers, rows and the menu bar.
-struct ProviderMark: View {
-    let provider: Provider
-    var size: CGFloat = 13
-
-    var body: some View {
-        Image(systemName: provider.symbolName)
-            .font(.system(size: size, weight: .medium))
-            .foregroundStyle(provider.tint)
-            .accessibilityHidden(true)
-    }
-}
-
 /// The one place an account's problem is explained and repaired. Every
 /// surface renders this, so a broken login is fixable wherever it is noticed.
 struct IssueRow: View {

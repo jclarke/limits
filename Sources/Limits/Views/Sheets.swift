@@ -101,8 +101,11 @@ struct AddAccountSheet: View {
                 if usesCLILogin {
                     await usage.signIn(profile)
                     // A failed login leaves a profile with no session. Remove
-                    // it rather than stranding a permanently broken row.
-                    if usage.state(for: profile.id).hasAuthProblem, let message = usage.lastLoginError {
+                    // it rather than stranding a permanently broken row. Any
+                    // issue counts: most login failures surface as `.other`,
+                    // which is not classified as an auth problem.
+                    if usage.state(for: profile.id).issue != nil {
+                        let message = usage.lastLoginError ?? "Sign-in did not complete."
                         accounts.remove(profile.id)
                         error = message
                         return

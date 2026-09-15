@@ -83,11 +83,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         } else {
             for (index, snapshot) in snapshots.enumerated() {
                 if index > 0 { title.append(plain("  ")) }
-                append(
-                    symbol: snapshot.provider.symbolName,
-                    color: snapshot.provider.nsTint,
-                    to: title
-                )
+                append(provider: snapshot.provider, to: title)
                 title.append(plain(" " + value(for: snapshot), color: color(for: snapshot)))
             }
             if hidden > 0 { title.append(plain("  +\(hidden)", color: .secondaryLabelColor)) }
@@ -131,6 +127,23 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         ])
     }
 
+    /// The provider's real brand mark, tinted to its color.
+    private func append(provider: Provider, to title: NSMutableAttributedString) {
+        guard let image = ProviderLogo.tinted(provider, pointSize: 13, color: provider.nsTint) else {
+            append(symbol: provider.symbolName, color: provider.nsTint, to: title)
+            return
+        }
+        title.append(attachment(image))
+    }
+
+    private func attachment(_ image: NSImage) -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Sit the mark on the text baseline rather than the line box.
+        attachment.bounds = CGRect(x: 0, y: -2.5, width: image.size.width, height: image.size.height)
+        return NSAttributedString(attachment: attachment)
+    }
+
     private func append(symbol: String, color: NSColor, to title: NSMutableAttributedString) {
         guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) else { return }
         let configured = image.withSymbolConfiguration(
@@ -146,12 +159,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return true
         }
         tinted.isTemplate = false
-
-        let attachment = NSTextAttachment()
-        attachment.image = tinted
-        // Sit the glyph on the text baseline rather than the line box.
-        attachment.bounds = CGRect(x: 0, y: -2, width: tinted.size.width, height: tinted.size.height)
-        title.append(NSAttributedString(attachment: attachment))
+        title.append(attachment(tinted))
     }
 
     private func accessibilityText(_ snapshots: [AccountSnapshot]) -> String {
