@@ -79,12 +79,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         } else {
             let labels = Self.shortLabels(for: snapshots)
             for (index, snapshot) in snapshots.enumerated() {
-                if index > 0 { title.append(plain("  ")) }
+                if index > 0 { title.append(gap(Self.entryGap)) }
                 append(provider: snapshot.provider, to: title)
                 if let label = labels[snapshot.id] {
+                    // No gap before the label: it should read as part of the
+                    // mark, not as a separate token.
                     title.append(superscript(label))
                 }
-                title.append(plain(" " + value(for: snapshot), color: color(for: snapshot)))
+                title.append(gap(Self.figureGap))
+                title.append(plain(value(for: snapshot), color: color(for: snapshot)))
             }
         }
 
@@ -95,6 +98,21 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         button.attributedTitle = title
         button.setAccessibilityLabel(accessibilityText(snapshots))
+    }
+
+    /// Space between one account's figure and the next account's mark. Wide
+    /// enough that the eye groups mark, label and figure as one unit.
+    private static let entryGap: CGFloat = 7
+    /// Space between a mark (or its label) and the figure it belongs to.
+    private static let figureGap: CGFloat = 3
+
+    /// A fixed-width space. Literal spaces are font-dependent and too coarse
+    /// to tune a menu bar with.
+    private func gap(_ width: CGFloat) -> NSAttributedString {
+        NSAttributedString(string: " ", attributes: [
+            .font: NSFont.systemFont(ofSize: 12),
+            .kern: width - 3.5
+        ])
     }
 
     /// Which accounts need a label.
