@@ -128,7 +128,7 @@ private struct ProviderSection: View {
 
     private var addAccountRow: some View {
         Button {
-            router.sheet = .addAccount
+            router.sheet = .addAccount(provider)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "plus").font(.system(size: 10, weight: .semibold))

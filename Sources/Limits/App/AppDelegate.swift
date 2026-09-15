@@ -50,6 +50,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let tab: Router.Tab = CommandLine.arguments.contains("--providers") ? .providers : .limits
             showDashboard(tab)
         }
+        // `--add-account <provider>` opens the Add Account sheet as if that
+        // provider's own row had been used.
+        if let index = CommandLine.arguments.firstIndex(of: "--add-account"),
+           index + 1 < CommandLine.arguments.count,
+           let provider = Provider(rawValue: CommandLine.arguments[index + 1]) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.showDashboard(.providers)
+                // Give the window's view hierarchy a tick to exist before
+                // asking it to present a sheet.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    self?.router.sheet = .addAccount(provider)
+                }
+            }
+        }
     }
 
     /// Settings is an AppDelegate-owned window rather than SwiftUI's

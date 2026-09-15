@@ -52,6 +52,13 @@ final class AccountsStore: ObservableObject {
         return [system] + owned
     }
 
+    /// Default selection when adding an account with no provider context.
+    /// Picking a provider the user actually tracks beats a hardcoded one they
+    /// may not even use.
+    var firstTrackedProvider: Provider {
+        Provider.allCases.first(where: trackedProviders.contains) ?? .claude
+    }
+
     func profile(id: AccountID) -> AccountProfile? {
         allProfiles.first { $0.id == id }
     }

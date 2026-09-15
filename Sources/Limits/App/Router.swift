@@ -19,7 +19,11 @@ final class Router: ObservableObject {
     /// SwiftUI honors only one and can present the wrong content — so every
     /// modal routes through this single value instead.
     enum Sheet: Identifiable, Equatable {
-        case addAccount
+        /// Carries the provider whose "Add another…" row was used, so the
+        /// sheet opens on that provider instead of making the user re-pick
+        /// what they just clicked. Nil when opened from the toolbar, where
+        /// there is no provider context.
+        case addAccount(Provider?)
         /// Enter or replace a stored credential.
         case credential(AccountProfile)
         /// Explain how to repair an account Limits deliberately does not own.
@@ -27,7 +31,7 @@ final class Router: ObservableObject {
 
         var id: String {
             switch self {
-            case .addAccount: "add"
+            case .addAccount(let provider): "add.\(provider?.rawValue ?? "any")"
             case .credential(let profile): "credential.\(profile.id.rawValue)"
             case .guidance(let profile): "guidance.\(profile.id.rawValue)"
             }

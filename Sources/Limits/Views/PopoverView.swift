@@ -103,7 +103,7 @@ struct PopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Add Account") { router.openDashboard(.providers, sheet: .addAccount) }
+            Button("Add Account") { router.openDashboard(.providers, sheet: .addAccount(nil)) }
                 .controlSize(.small)
                 .padding(.top, 2)
         }

@@ -34,7 +34,7 @@ struct DashboardView: View {
             ToolbarItemGroup {
                 if router.tab == .providers {
                     Button {
-                        router.sheet = .addAccount
+                        router.sheet = .addAccount(nil)
                     } label: {
                         Label("Add Account", systemImage: "plus")
                     }
@@ -51,8 +51,8 @@ struct DashboardView: View {
         }
         .sheet(item: $router.sheet) { sheet in
             switch sheet {
-            case .addAccount:
-                AddAccountSheet()
+            case .addAccount(let provider):
+                AddAccountSheet(initialProvider: provider ?? accounts.firstTrackedProvider)
                     .environmentObject(accounts)
                     .environmentObject(usage)
                     .environmentObject(router)

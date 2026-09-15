@@ -8,11 +8,17 @@ struct AddAccountSheet: View {
     @EnvironmentObject private var router: Router
     @Environment(\.dismiss) private var dismiss
 
-    @State private var provider: Provider = .claude
+    @State private var provider: Provider
     @State private var name = ""
     @State private var token = ""
     @State private var isWorking = false
     @State private var error: String?
+
+    /// Opened from a provider's own row, that provider is already the answer,
+    /// so the user is not asked to re-pick what they just clicked.
+    init(initialProvider: Provider) {
+        _provider = State(initialValue: initialProvider)
+    }
 
     private var usesCLILogin: Bool { provider.credentialKind == .isolatedCLI }
     private var cliAvailable: Bool { AccountLoginService.executable(for: provider) != nil }
