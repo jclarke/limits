@@ -84,12 +84,28 @@ echo "==> Notarizing"
 # Without notarization Gatekeeper still refuses a download on first open, even
 # with a valid Developer ID. The ticket is stapled to the app so it verifies
 # offline, which means re-packaging afterwards.
+#
+# `notarytool submit --wait` exits 0 even when Apple returns Invalid, so the
+# status has to be checked before stapling.
 if [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
-  xcrun notarytool submit "$ARCHIVE" \
+  SUBMIT_JSON="$(xcrun notarytool submit "$ARCHIVE" \
     --apple-id "$APPLE_ID" \
     --team-id "$APPLE_TEAM_ID" \
     --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-    --wait
+    --wait \
+    --output-format json)"
+  STATUS="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' <<<"$SUBMIT_JSON")"
+  SUBMISSION_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' <<<"$SUBMIT_JSON")"
+  if [[ "$STATUS" != "Accepted" ]]; then
+    echo "error: notarization $STATUS${SUBMISSION_ID:+ (id $SUBMISSION_ID)}" >&2
+    if [[ -n "$SUBMISSION_ID" ]]; then
+      xcrun notarytool log "$SUBMISSION_ID" \
+        --apple-id "$APPLE_ID" \
+        --team-id "$APPLE_TEAM_ID" \
+        --password "$APPLE_APP_SPECIFIC_PASSWORD" >&2 || true
+    fi
+    exit 1
+  fi
   # Staple the app, not the archive: the ticket has to travel inside the
   # bundle so it verifies on a machine that is offline when first opened.
   xcrun stapler staple "$DIST_DIR/$APP_NAME.app"

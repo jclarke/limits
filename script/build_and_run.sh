@@ -94,22 +94,31 @@ echo "==> Signing ($SIGNING_IDENTITY)"
 # and where the identities actually match.
 # Written as a string rather than an array: macOS ships bash 3.2, where
 # "${array[@]}" on an empty array counts as unbound under `set -u`.
+#
+# Notarization rejects signatures that omit a secure timestamp
+# (`--timestamp=none`). Use Apple's timestamp server for Developer ID
+# builds; skip it for ad-hoc local ones so they still work offline.
 SIGN_OPTIONS=""
+TIMESTAMP_OPTION="--timestamp=none"
 if [[ "$SIGNING_IDENTITY" != "-" ]]; then
   SIGN_OPTIONS="--options runtime"
+  TIMESTAMP_OPTION="--timestamp"
 fi
 
 # Inside-out: nested code must be sealed before the bundle that contains it,
-# or the outer signature is invalid the moment it is verified.
+# or the outer signature is invalid the moment it is verified. Preserve
+# Sparkle's own entitlements when re-signing its helpers.
 if [[ -d "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" ]]; then
   while IFS= read -r nested; do
-    codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" --timestamp=none "$nested"
+    codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" $TIMESTAMP_OPTION \
+      --preserve-metadata=entitlements,identifier,flags,runtime "$nested"
   done < <(find "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" -maxdepth 4 \
     \( -name "*.xpc" -o -name "Autoupdate" -o -name "Updater.app" \))
-  codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" --timestamp=none \
+  codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" $TIMESTAMP_OPTION \
+    --preserve-metadata=entitlements,identifier,flags,runtime \
     "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 fi
-codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" --timestamp=none "$APP_BUNDLE"
+codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" $TIMESTAMP_OPTION "$APP_BUNDLE"
 
 if [[ "$MODE" == "install" ]]; then
   INSTALLED="/Applications/$APP_NAME.app"
