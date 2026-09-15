@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The scene graph is intentionally empty: the menu bar item and the dashboard
-/// window are both owned by `AppDelegate`. `Settings` exists only because an
-/// `App` needs at least one scene, and it is never presented.
+/// Every surface — menu bar item, dashboard, settings — is owned by
+/// `AppDelegate`, because an `LSUIElement` app cannot rely on SwiftUI's scene
+/// plumbing for window presentation. `Settings` here is an empty placeholder
+/// only because `App` requires at least one scene; it is never shown.
 struct LimitsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 

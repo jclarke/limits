@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Builds Limits.app into dist/ and (by default) relaunches it.
 #
-#   script/build_and_run.sh          build, install and run
+#   script/build_and_run.sh          build and run from dist/
 #   script/build_and_run.sh build    build only
+#   script/build_and_run.sh install  build, copy to /Applications, and run
+#
+# Use `install` before turning on Launch at Login: macOS records the app's
+# path when it registers, so a bundle that later moves stops launching.
 set -euo pipefail
 
 MODE="${1:-run}"
@@ -43,7 +47,14 @@ cp "$ROOT_DIR/Resources/Limits.icns" "$APP_BUNDLE/Contents/Resources/Limits.icns
 echo "==> Signing ($SIGNING_IDENTITY)"
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$APP_BUNDLE" 2>/dev/null
 
-if [[ "$MODE" == "run" ]]; then
+if [[ "$MODE" == "install" ]]; then
+  INSTALLED="/Applications/$APP_NAME.app"
+  echo "==> Installing to $INSTALLED"
+  rm -r "$INSTALLED" 2>/dev/null || true
+  cp -R "$APP_BUNDLE" "$INSTALLED"
+  open "$INSTALLED"
+  echo "Limits installed to /Applications and running in the menu bar."
+elif [[ "$MODE" == "run" ]]; then
   echo "==> Launching"
   open "$APP_BUNDLE"
   echo "Limits is running in the menu bar."

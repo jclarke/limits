@@ -42,6 +42,7 @@ final class Router: ObservableObject {
     /// Set by `AppDelegate`. The popover lives outside the scene graph, so it
     /// cannot use SwiftUI's `openWindow` to reach the dashboard.
     var presentDashboard: ((Tab) -> Void)?
+    var presentSettings: (() -> Void)?
 
     func openDashboard(_ tab: Tab, sheet: Sheet? = nil) {
         self.sheet = sheet

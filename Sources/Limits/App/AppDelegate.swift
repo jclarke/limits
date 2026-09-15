@@ -12,12 +12,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let accounts = AccountsStore()
     lazy var usage = UsageStore(accounts: accounts)
     let router = Router()
+    let launchAtLogin = LaunchAtLogin()
 
     private var statusItemController: StatusItemController?
     private var dashboardWindow: NSWindow?
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         router.presentDashboard = { [weak self] tab in self?.showDashboard(tab) }
+        router.presentSettings = { [weak self] in self?.showSettings() }
 
         let controller = StatusItemController(accounts: accounts, usage: usage, router: router)
         controller.install()
@@ -32,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--dark") {
             NSApp.appearance = NSAppearance(named: .darkAqua)
         }
+        if CommandLine.arguments.contains("--open-settings") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.showSettings()
+            }
+        }
         if CommandLine.arguments.contains("--open-popover") {
             // Give the first refresh a moment so the popover has real content.
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
@@ -42,6 +50,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let tab: Router.Tab = CommandLine.arguments.contains("--providers") ? .providers : .limits
             showDashboard(tab)
         }
+    }
+
+    /// Settings is an AppDelegate-owned window rather than SwiftUI's
+    /// `Settings` scene. In an `LSUIElement` app that scene's
+    /// `showSettingsWindow:` action has no target until the app has built a
+    /// standard main menu, so invoking it does nothing at all.
+    @objc func showSettings() {
+        statusItemController?.closePopover()
+        NSApp.setActivationPolicy(.regular)
+
+        if let window = settingsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let hosting = NSHostingController(
+            rootView: SettingsView()
+                .environmentObject(launchAtLogin)
+                .environmentObject(usage)
+        )
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Limits Settings"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.center()
+        window.delegate = self
+        settingsWindow = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// A menu bar app has no Dock icon to reopen from, so the window is only
@@ -96,9 +136,14 @@ extension AppDelegate: NSWindowDelegate {
     /// Keep the window object around so reopening is instant and preserves
     /// scroll position, but let it go if the system tears it down.
     func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window == dashboardWindow else { return }
-        router.highlighted = nil
-        // Back to a menu-bar-only app now that nothing needs focus.
-        NSApp.setActivationPolicy(.accessory)
+        guard let closing = notification.object as? NSWindow else { return }
+        if closing == dashboardWindow { router.highlighted = nil }
+        // Return to menu-bar-only once no window of ours still needs focus.
+        let remaining = [dashboardWindow, settingsWindow]
+            .compactMap { $0 }
+            .filter { $0 != closing && $0.isVisible }
+        if remaining.isEmpty {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 }

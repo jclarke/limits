@@ -7,9 +7,13 @@ multiple accounts per provider.
 ## Build and run
 
 ```sh
-script/build_and_run.sh          # build, sign, install to dist/ and launch
+script/build_and_run.sh          # build, sign to dist/ and launch
 script/build_and_run.sh build    # build only
+script/build_and_run.sh install  # build, copy to /Applications and launch
 ```
+
+Use `install` before turning on **Launch at Login**: macOS records the app's
+path when it registers, so a bundle that later moves stops launching.
 
 Useful while developing:
 
@@ -18,6 +22,7 @@ dist/Limits.app/Contents/MacOS/Limits --diagnose        # print every provider's
 dist/Limits.app/Contents/MacOS/Limits --open-dashboard  # open the window without clicking the menu bar
 dist/Limits.app/Contents/MacOS/Limits --open-dashboard --providers  # ...on the Providers screen
 dist/Limits.app/Contents/MacOS/Limits --open-popover    # show the dropdown for inspection
+dist/Limits.app/Contents/MacOS/Limits --open-settings   # show the settings window
 dist/Limits.app/Contents/MacOS/Limits --dark            # force dark appearance
 ```
 
@@ -50,6 +55,12 @@ account there means storing one pasted token in the Keychain.
 
 Your primary ("System") account is never signed in or out by Limits — for
 those, the app tells you what to run instead.
+
+## Settings
+
+Reachable from **Settings** in the dropdown footer. Carries Launch at Login
+(via `SMAppService`) and a plain statement of the refresh interval and the
+read-only credential policy.
 
 ## Visibility
 

@@ -112,6 +112,9 @@ struct PopoverView: View {
                 open(tab: .providers)
             }
             Spacer()
+            FooterButton(title: "Settings", symbol: "gearshape") {
+                router.presentSettings?()
+            }
             FooterButton(title: "Quit", symbol: "power") {
                 NSApplication.shared.terminate(nil)
             }
