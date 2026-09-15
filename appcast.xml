@@ -3,6 +3,19 @@
     <channel>
         <title>Limits</title>
         <item>
+            <title>1.0.1</title>
+            <pubDate>Tue, 15 Sep 2026 11:26:30 -0400</pubDate>
+            <link>https://github.com/jclarke/limits</link>
+            <sparkle:version>10001</sparkle:version>
+            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.1/Limits-1.0.1.zip" length="2164082" type="application/octet-stream" sparkle:edSignature="JIDbijFUtK3AiVCIDx8f6O+20QEDD60AqbJEBAXsdlLja4PhoMPFHjmoWyyTE//0RdKzAmhWVSfrTk+kHklABw=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.1/Limits10001-10000.delta" sparkle:deltaFrom="10000" length="115630" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976240" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Q93jxzJqQ/atFdqzSBFmn4mX1QWF3Mjpx2z10HYwDGCJDDbdf6EaAKAnjLTw37FU6vyB9p7H4fjIUeUJbAEZDg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0.0</title>
             <pubDate>Tue, 15 Sep 2026 10:56:25 -0400</pubDate>
             <link>https://github.com/jclarke/limits</link>
@@ -10,7 +23,7 @@
             <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.0/Limits-1.0.0.zip" length="2112728" type="application/octet-stream" sparkle:edSignature="nbINrye/vhJb6GfKoreVlG8ImkgoTtsOcuURpxDa4gYcANbYkwDXwWtAnG1PtRW0GWOiklJkhNtH5D3o0HUGCg=="/>
+            <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.1/Limits-1.0.0.zip" length="2112728" type="application/octet-stream" sparkle:edSignature="nbINrye/vhJb6GfKoreVlG8ImkgoTtsOcuURpxDa4gYcANbYkwDXwWtAnG1PtRW0GWOiklJkhNtH5D3o0HUGCg=="/>
         </item>
     </channel>
 </rss>
