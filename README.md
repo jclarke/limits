@@ -56,6 +56,34 @@ account there means storing one pasted token in the Keychain.
 Your primary ("System") account is never signed in or out by Limits — for
 those, the app tells you what to run instead.
 
+## Updates
+
+Limits updates itself through [Sparkle](https://sparkle-project.org). Releases
+are published to GitHub and the app checks `appcast.xml` daily; each update is
+verified against the EdDSA public key in `Resources/Info.plist` before it runs.
+
+Cutting a release:
+
+```sh
+script/release.sh 1.1.0             # build, publish, update the appcast
+script/release.sh 1.1.0 --dry-run   # everything except push and publish
+```
+
+The private signing key lives in the release machine's login keychain and is
+never committed. It is created once with `script/generate_sparkle_keys.sh`;
+**back it up**, because losing it means existing installs can no longer verify
+an update and would each need reinstalling by hand.
+
+Two limits worth knowing:
+
+- Builds are **arm64-only**, so the appcast advertises that requirement and
+  Intel Macs will not be offered updates.
+- The app is **ad-hoc signed**, not notarized. Updates install fine, but a
+  first download needs right-click → Open to get past Gatekeeper. Signing with
+  a Developer ID and notarizing removes that; `script/build_and_run.sh` already
+  switches on the hardened runtime when given a real identity via
+  `LIMITS_SIGNING_IDENTITY`.
+
 ## Settings
 
 Reachable from **Settings** in the dropdown footer. Carries Launch at Login

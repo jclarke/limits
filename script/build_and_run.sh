@@ -44,8 +44,46 @@ done
 printf 'APPL????' > "$APP_BUNDLE/Contents/PkgInfo"
 cp "$ROOT_DIR/Resources/Limits.icns" "$APP_BUNDLE/Contents/Resources/Limits.icns"
 
+# Sparkle ships as a framework the app links against at runtime. The rpath set
+# in Package.swift points here, and its XPC services must come along or the
+# updater cannot install anything.
+# Prefer the copy SwiftPM staged beside the binary — that is the one this
+# build actually linked against — and fall back to the downloaded artifact.
+SPARKLE_FRAMEWORK="$BIN_DIR/Sparkle.framework"
+if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
+  SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" -maxdepth 6 -name "Sparkle.framework" -type d | head -1)"
+fi
+if [[ -n "$SPARKLE_FRAMEWORK" ]]; then
+  mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+  cp -R "$SPARKLE_FRAMEWORK" "$APP_BUNDLE/Contents/Frameworks/"
+else
+  echo "warning: Sparkle.framework not found; run 'swift package resolve' first" >&2
+fi
+
 echo "==> Signing ($SIGNING_IDENTITY)"
-codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$APP_BUNDLE" 2>/dev/null
+# The hardened runtime turns on library validation, which refuses to load a
+# framework whose signing identity differs from the app's. Ad-hoc signatures
+# carry no team, so every ad-hoc build would fail to launch. Apply it only
+# with a real identity — that is the case where it is required (notarization)
+# and where the identities actually match.
+# Written as a string rather than an array: macOS ships bash 3.2, where
+# "${array[@]}" on an empty array counts as unbound under `set -u`.
+SIGN_OPTIONS=""
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+  SIGN_OPTIONS="--options runtime"
+fi
+
+# Inside-out: nested code must be sealed before the bundle that contains it,
+# or the outer signature is invalid the moment it is verified.
+if [[ -d "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" ]]; then
+  while IFS= read -r nested; do
+    codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" --timestamp=none "$nested"
+  done < <(find "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" -maxdepth 4 \
+    \( -name "*.xpc" -o -name "Autoupdate" -o -name "Updater.app" \))
+  codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" --timestamp=none \
+    "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+fi
+codesign --force $SIGN_OPTIONS --sign "$SIGNING_IDENTITY" --timestamp=none "$APP_BUNDLE"
 
 if [[ "$MODE" == "install" ]]; then
   INSTALLED="/Applications/$APP_NAME.app"

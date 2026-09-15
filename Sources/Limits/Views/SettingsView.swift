@@ -3,6 +3,7 @@ import SwiftUI
 /// The ⌘, pane. Small on purpose — the app's real surface is the menu bar.
 struct SettingsView: View {
     @EnvironmentObject private var launchAtLogin: LaunchAtLogin
+    @EnvironmentObject private var updates: UpdateController
     @EnvironmentObject private var usage: UsageStore
 
     var body: some View {
@@ -28,6 +29,24 @@ struct SettingsView: View {
                 Text("Startup")
             } footer: {
                 Text("Limits registers the app at its current location, so move it to your Applications folder before turning this on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Check for updates automatically", isOn: $updates.automaticallyChecks)
+                LabeledContent("Version") {
+                    HStack(spacing: 8) {
+                        Text(updates.currentVersion).foregroundStyle(.secondary)
+                        Button("Check Now") { updates.checkForUpdates() }
+                            .controlSize(.small)
+                            .disabled(!updates.canCheckForUpdates)
+                    }
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Updates are downloaded from the project's GitHub releases and verified against a signing key built into this app.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var usage = UsageStore(accounts: accounts)
     let router = Router()
     let launchAtLogin = LaunchAtLogin()
+    let updates = UpdateController()
 
     private var statusItemController: StatusItemController?
     private var dashboardWindow: NSWindow?
@@ -84,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rootView: SettingsView()
                 .environmentObject(launchAtLogin)
                 .environmentObject(usage)
+                .environmentObject(updates)
         )
         let window = NSWindow(contentViewController: hosting)
         window.title = "Limits Settings"
