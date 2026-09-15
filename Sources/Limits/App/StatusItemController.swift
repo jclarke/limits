@@ -82,8 +82,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 if index > 0 { title.append(gap(Self.entryGap)) }
                 append(provider: snapshot.provider, to: title)
                 if let label = labels[snapshot.id] {
-                    // No gap before the label: it should read as part of the
-                    // mark, not as a separate token.
+                    // A hair of space so the label clears the mark's artwork
+                    // without drifting far enough to read as its own token.
+                    title.append(gap(Self.markLabelGap))
                     title.append(superscript(label))
                 }
                 title.append(gap(Self.figureGap))
@@ -105,6 +106,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private static let entryGap: CGFloat = 7
     /// Space between a mark (or its label) and the figure it belongs to.
     private static let figureGap: CGFloat = 3
+    /// Space between a mark and the label riding above it.
+    private static let markLabelGap: CGFloat = 2
 
     /// A fixed-width space. Literal spaces are font-dependent and too coarse
     /// to tune a menu bar with.
