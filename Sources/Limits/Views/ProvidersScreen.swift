@@ -62,6 +62,7 @@ struct ProvidersScreen: View {
 /// One provider: a tracking switch and its accounts.
 private struct ProviderSection: View {
     @EnvironmentObject private var accounts: AccountsStore
+    @EnvironmentObject private var usage: UsageStore
     @EnvironmentObject private var router: Router
 
     let provider: Provider
@@ -120,7 +121,12 @@ private struct ProviderSection: View {
     /// The copy must not promise accounts a provider cannot actually hold.
     private var subtitle: String {
         guard provider.supportsMultipleAccounts else {
-            return "Signs in with Google through \(provider.displayName)'s own CLI, which stores one account at a time."
+            return provider.supportsInAppSignIn
+                ? "Signs in through \(provider.displayName)'s own CLI, which stores one account at a time."
+                : "Reads the account \(provider.displayName) is signed into."
+        }
+        if provider.discoversAccounts {
+            return "Lists every account \(provider.displayName)'s CLI is signed into. Signing in again adds another."
         }
         switch provider.credentialKind {
         case .isolatedCLI:
@@ -132,20 +138,34 @@ private struct ProviderSection: View {
 
     private var addAccountRow: some View {
         Button {
-            router.sheet = .addAccount(provider)
+            if provider.discoversAccounts {
+                // Its own CLI owns the credential store, so signing in is the
+                // whole flow — there is nothing for Limits to name or hold.
+                Task { await usage.signInSharedHome(provider: provider) }
+            } else {
+                router.sheet = .addAccount(provider)
+            }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
-                Text("Add another \(provider.displayName) account")
-                    .font(.system(size: 11.5))
+                if usage.isSigningIn(provider: provider) {
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                    Text("Complete the sign-in in your browser…")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
+                    Text("Add another \(provider.displayName) account")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Color.accentColor)
+                }
                 Spacer()
             }
-            .foregroundStyle(Color.accentColor)
             .contentShape(Rectangle())
             .padding(.horizontal, Theme.cardPadding)
             .padding(.vertical, 9)
         }
         .buttonStyle(.plain)
+        .disabled(usage.isSigningIn(provider: provider))
     }
 }
 
@@ -272,7 +292,10 @@ private struct AccountRow: View {
                 draftName = snapshot.name
                 isRenaming = true
             }
-            if !profile.isSystem {
+            // Only an account Limits created can be removed here. A
+            // discovered one belongs to the provider's CLI — removing it means
+            // signing out there, not deleting a row.
+            if profile.kind == .managed {
                 Divider()
                 Button("Remove account", role: .destructive) { confirmingRemoval = true }
             }
@@ -304,9 +327,13 @@ private struct AccountRow: View {
     /// Antigravity's sign-in needs a code pasted back, so it opens a screen;
     /// Claude and Codex complete entirely inside their own CLI.
     private func startSignIn(_ profile: AccountProfile) {
-        if profile.provider == .antigravity {
+        switch profile.provider {
+        case .antigravity:
+            // Antigravity pauses for a pasted code, so it needs a screen.
             router.sheet = .antigravitySignIn(profile)
-        } else {
+        case .cursor, .grok:
+            Task { await usage.signInSharedHome(provider: profile.provider) }
+        case .claude, .codex:
             Task { await usage.signIn(profile) }
         }
     }

@@ -133,6 +133,63 @@ struct AccountLoginService: Sendable {
         }
     }
 
+    // MARK: - Shared-home sign-in
+
+    /// Runs a provider CLI's own sign-in against the credential store it
+    /// already uses, for providers that need no app-owned profile.
+    ///
+    /// Grok keys `auth.json` per account, so this *adds* an account. Cursor
+    /// stores one credential under a fixed Keychain identity, so it replaces.
+    /// Both complete in the browser without a code to paste back.
+    func signInSharedHome(provider: Provider) async throws {
+        guard let name = provider.cliExecutableName,
+              let executable = Self.executable(for: provider) else {
+            throw AccountIssue.cliMissing(executable: provider.cliExecutableName ?? "")
+        }
+        let arguments: [String]
+        switch provider {
+        case .grok: arguments = ["login", "--oauth"]
+        case .cursor: arguments = ["login"]
+        default:
+            throw AccountIssue.other("\(provider.displayName) has no shared-home sign-in.")
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = CLIResolver.launchPath(existing: environment["PATH"], executable: executable)
+        // These CLIs open the browser themselves and wait on a loopback
+        // callback, so the default browser must stay enabled.
+        environment.removeValue(forKey: "NO_OPEN_BROWSER")
+
+        // The browser round-trip is user-paced and may include an SSO hop.
+        try await runInPTY(
+            executable: executable,
+            arguments: arguments,
+            environment: environment,
+            timeout: 900
+        )
+
+        guard try await sharedHomeIsSignedIn(provider: provider) else {
+            throw AccountIssue.other("\(name) finished without creating a signed-in account.")
+        }
+    }
+
+    private func sharedHomeIsSignedIn(provider: Provider) async throws -> Bool {
+        switch provider {
+        case .grok:
+            return !GrokAuthReader().loadAll().isEmpty
+        case .cursor:
+            guard let executable = Self.executable(for: .cursor) else { return false }
+            // `status` exits non-zero when signed out.
+            return (try? await ProcessRunner.run(
+                executable.path,
+                arguments: ["status"],
+                timeout: 30
+            )) != nil
+        default:
+            return false
+        }
+    }
+
     // MARK: - Shared
 
     static func executable(for provider: Provider) -> URL? {
@@ -154,7 +211,12 @@ struct AccountLoginService: Sendable {
 
     /// Runs a CLI attached to a pseudo-terminal, discarding its paint. Used
     /// for TUI logins that misbehave when their output is not a terminal.
-    private func runInPTY(executable: URL, arguments: [String], environment: [String: String]) async throws {
+    private func runInPTY(
+        executable: URL,
+        arguments: [String],
+        environment: [String: String],
+        timeout: TimeInterval? = nil
+    ) async throws {
         try await Task.detached(priority: .userInitiated) {
             var master: Int32 = -1
             var slave: Int32 = -1
@@ -184,8 +246,13 @@ struct AccountLoginService: Sendable {
             let flags = fcntl(master, F_GETFL)
             _ = fcntl(master, F_SETFL, flags | O_NONBLOCK)
             var bytes = [UInt8](repeating: 0, count: 8_192)
+            let deadline = timeout.map { Date().addingTimeInterval($0) }
             while process.isRunning {
                 while Darwin.read(master, &bytes, bytes.count) > 0 {}
+                if let deadline, Date() > deadline {
+                    process.terminate()
+                    break
+                }
                 usleep(50_000)
             }
             process.waitUntilExit()

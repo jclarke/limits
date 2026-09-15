@@ -40,9 +40,16 @@ struct QuotaFetcher: Sendable {
                 keychainInteraction: keychainInteraction
             )
         case .cursor:
-            return try await CursorUsageService().fetch(token: try storedSecret(profile), now: now)
+            // Cursor's CLI and IDE share one credential, so there is no
+            // per-account routing to do.
+            return try await CursorUsageService().fetch(now: now)
         case .grok:
-            return try await GrokUsageService().fetch(token: try storedSecret(profile), now: now)
+            // Grok's own auth file holds every signed-in account, so the
+            // profile only has to say which one it refers to.
+            return try await GrokUsageService().fetch(
+                accountKey: profile.providerAccountKey,
+                now: now
+            )
         case .antigravity:
             return try await AntigravityUsageService().fetch(
                 now: now,

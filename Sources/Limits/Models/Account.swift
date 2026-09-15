@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Stable local identity for one provider account. Provider credentials, email
@@ -17,6 +18,20 @@ struct AccountID: RawRepresentable, Codable, Hashable, Identifiable, Sendable {
     static func managed(_ uuid: UUID) -> AccountID {
         AccountID(rawValue: "managed.\(uuid.uuidString.lowercased())")
     }
+
+    /// An account the provider's own tools already hold, identified by that
+    /// provider's key for it. Hashed so a provider-side identifier never
+    /// becomes a filename or a Keychain account.
+    static func discovered(_ provider: Provider, key: String) -> AccountID {
+        AccountID(rawValue: "discovered.\(provider.rawValue).\(Self.digest(key))")
+    }
+
+    private static func digest(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8))
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
 }
 
 struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
@@ -25,6 +40,9 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
         case system
         /// An app-owned account: an isolated CLI home, or a stored credential.
         case managed
+        /// One of several accounts the provider's own CLI already holds.
+        /// Limits does not own the credential and cannot remove it.
+        case discovered
     }
 
     let id: AccountID
@@ -40,17 +58,19 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
     /// user can track an account without crowding the menu bar.
     var showsInMenuBar: Bool
     let createdAt: Date
+    /// The provider's own identifier for a discovered account. Nil otherwise.
+    var providerAccountKey: String?
 
     var isSystem: Bool { kind == .system }
+    var isDiscovered: Bool { kind == .discovered }
     var credentialKind: AccountCredentialKind { provider.credentialKind }
 
     /// Only an app-owned CLI home can renew its OAuth session in place. A
     /// system account's session belongs to the user's own install, and Limits
     /// will not log that in or out from underneath them.
     var canSignInAgain: Bool {
-        // Antigravity is the exception: Limits can drive its CLI's browser
-        // sign-in directly, so even the account the user's own tools use can
-        // be renewed from here rather than from a terminal.
+        // Providers whose own CLI Limits can drive are renewable from here,
+        // including accounts the user's tools already own.
         if provider.supportsInAppSignIn { return true }
         return !isSystem
             && credentialKind == .isolatedCLI
@@ -66,6 +86,27 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
         let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
         return isSystem ? "Current Account" : provider.displayName
+    }
+
+    /// A profile for an account read out of the provider's own credential
+    /// store. Visibility settings are Limits'; the credential is not.
+    static func discovered(
+        _ provider: Provider,
+        key: String,
+        name: String,
+        createdAt: Date = .distantPast
+    ) -> AccountProfile {
+        AccountProfile(
+            id: .discovered(provider, key: key),
+            provider: provider,
+            displayName: name,
+            kind: .discovered,
+            configurationDirectory: nil,
+            isEnabled: true,
+            showsInMenuBar: true,
+            createdAt: createdAt,
+            providerAccountKey: key
+        )
     }
 
     static func system(_ provider: Provider) -> AccountProfile {

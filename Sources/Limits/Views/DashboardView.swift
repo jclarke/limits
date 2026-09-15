@@ -259,9 +259,13 @@ private struct ProviderLimitsCard: View {
     /// Antigravity's sign-in needs a code pasted back, so it opens a screen;
     /// Claude and Codex complete entirely inside their own CLI.
     private func startSignIn(_ profile: AccountProfile) {
-        if profile.provider == .antigravity {
+        switch profile.provider {
+        case .antigravity:
+            // Antigravity pauses for a pasted code, so it needs a screen.
             router.sheet = .antigravitySignIn(profile)
-        } else {
+        case .cursor, .grok:
+            Task { await usage.signInSharedHome(provider: profile.provider) }
+        case .claude, .codex:
             Task { await usage.signIn(profile) }
         }
     }

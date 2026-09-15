@@ -78,14 +78,27 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
     /// raises a system "Keychain Not Found" dialog.
     var supportsMultipleAccounts: Bool {
         switch self {
-        case .claude, .codex, .cursor, .grok: true
-        case .antigravity: false
+        // Grok's own auth file is keyed per account, so a new sign-in adds
+        // rather than replaces — no app-owned profile needed.
+        case .claude, .codex, .grok: true
+        // Antigravity and Cursor each store one credential under a fixed
+        // Keychain identity, so a second sign-in overwrites the first.
+        case .antigravity, .cursor: false
         }
     }
 
+    /// Accounts this provider's own tools already hold, which Limits lists
+    /// rather than creating.
+    var discoversAccounts: Bool { self == .grok }
+
     /// Whether Limits can run this provider's sign-in itself, including for
     /// the account the provider's own tools already use.
-    var supportsInAppSignIn: Bool { self == .antigravity }
+    var supportsInAppSignIn: Bool {
+        switch self {
+        case .antigravity, .cursor, .grok: true
+        case .claude, .codex: false
+        }
+    }
 
     /// The CLI that owns authentication for `isolatedCLI` providers.
     var cliExecutableName: String? {
@@ -96,7 +109,8 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
         // accepts the code the callback page shows, which is a flow Limits
         // can drive without ever handling the credential itself.
         case .antigravity: "agy"
-        case .cursor, .grok: nil
+        case .cursor: "cursor-agent"
+        case .grok: "grok"
         }
     }
 

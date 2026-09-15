@@ -10,16 +10,13 @@ struct GrokUsageService {
     private static let creditsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
     private static let settingsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/settings")!
 
-    func fetch(token routedToken: String? = nil, now: Date = .now) async throws -> ProviderQuota {
-        let token: String
-        if let routedToken, !routedToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            token = routedToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if let auth = GrokAuthReader().load() {
-            token = auth.token
-        } else {
+    /// `accountKey` selects one of the accounts `auth.json` already holds.
+    func fetch(accountKey: String? = nil, now: Date = .now) async throws -> ProviderQuota {
+        guard let account = GrokAuthReader().load(key: accountKey) else {
             throw AccountIssue.notSignedIn
         }
-        if let expiry = JWT.expiry(token), expiry <= now { throw AccountIssue.sessionExpired }
+        let token = account.token
+        if let expiry = account.expiry, expiry <= now { throw AccountIssue.sessionExpired }
 
         let (data, http) = try await Self.get(Self.creditsURL, token: token)
         switch http.statusCode {
@@ -131,32 +128,70 @@ enum GrokUsageParser {
     }
 }
 
-/// Read-only discovery of the Grok CLI credential.
+/// Read-only discovery of the Grok CLI's credentials.
+///
+/// `~/.grok/auth.json` is a dictionary keyed by `<issuer>::<principal id>`, so
+/// the CLI already holds every account the user has signed into and a new
+/// `grok login` adds an entry rather than replacing one. That makes Grok the
+/// one provider where multiple accounts need no app-owned profile at all —
+/// Limits just reads what is already there.
 struct GrokAuthReader {
-    struct Auth: Sendable {
+    struct Account: Sendable, Identifiable {
+        /// The `auth.json` key. Stable across logins for the same account.
+        let key: String
         let token: String
         let expiry: Date?
+        let email: String?
+        let displayName: String?
+
+        var id: String { key }
+
+        /// Best label for this account, preferring what the provider knows.
+        var resolvedName: String {
+            if let displayName, !displayName.isEmpty { return displayName }
+            if let email, !email.isEmpty { return email }
+            return "Grok account"
+        }
     }
 
     var authFileURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".grok/auth.json")
 
-    func load() -> Auth? {
-        guard let data = try? Data(contentsOf: authFileURL) else { return nil }
-        return Self.parse(data)
+    /// Every signed-in account, ordered stably so rows never reshuffle.
+    func loadAll() -> [Account] {
+        guard let data = try? Data(contentsOf: authFileURL) else { return [] }
+        return Self.parseAll(data)
     }
 
-    /// Entries are keyed by issuer and account id. Sorting by key keeps the
-    /// same file resolving to the same account on every read.
-    static func parse(_ data: Data) -> Auth? {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
-        for key in root.keys.sorted() {
+    /// The account matching `key`, or the first one when no key is given.
+    func load(key: String? = nil) -> Account? {
+        let accounts = loadAll()
+        guard let key else { return accounts.first }
+        return accounts.first { $0.key == key }
+    }
+
+    static func parseAll(_ data: Data) -> [Account] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return []
+        }
+        return root.keys.sorted().compactMap { key -> Account? in
             guard let entry = root[key] as? [String: Any],
                   let token = (entry["key"] as? String)?
                       .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !token.isEmpty else { continue }
-            return Auth(token: token, expiry: JWT.expiry(token) ?? entryExpiry(entry))
+                  !token.isEmpty else { return nil }
+            let first = (entry["first_name"] as? String) ?? ""
+            let last = (entry["last_name"] as? String) ?? ""
+            let full = [first, last]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            return Account(
+                key: key,
+                token: token,
+                expiry: JWT.expiry(token) ?? entryExpiry(entry),
+                email: (entry["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                displayName: full.isEmpty ? nil : full
+            )
         }
-        return nil
     }
 
     private static func entryExpiry(_ entry: [String: Any]) -> Date? {

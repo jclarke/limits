@@ -80,6 +80,8 @@ final class UsageStore: ObservableObject {
     func refreshAll(keychainInteraction: KeychainRead.Interaction = .disallowed) async {
         isRefreshingAll = true
         defer { isRefreshingAll = false }
+        // A sign-in performed outside Limits should show up on its own.
+        accounts.refreshDiscoveredAccounts()
         let profiles = accounts.allProfiles.filter(\.isEnabled)
         // Concurrently, but each account still guarded by `inFlight`.
         await withTaskGroup(of: Void.self) { group in
@@ -152,6 +154,28 @@ final class UsageStore: ObservableObject {
             failed.isRefreshing = false
             states[profile.id] = failed
         }
+    }
+
+    /// Runs a provider CLI's own sign-in against its existing credential
+    /// store. Adds an account for Grok; replaces one for Cursor.
+    func signInSharedHome(provider: Provider) async {
+        lastLoginError = nil
+        let marker = AccountID(rawValue: "sharedhome.\(provider.rawValue)")
+        guard !loggingIn.contains(marker) else { return }
+        loggingIn.insert(marker)
+        defer { loggingIn.remove(marker) }
+        do {
+            try await AccountLoginService().signInSharedHome(provider: provider)
+            accounts.refreshDiscoveredAccounts()
+            await refreshAll()
+        } catch {
+            let issue = (error as? AccountIssue) ?? .other(error.localizedDescription)
+            lastLoginError = issue.message(provider: provider)
+        }
+    }
+
+    func isSigningIn(provider: Provider) -> Bool {
+        loggingIn.contains(AccountID(rawValue: "sharedhome.\(provider.rawValue)"))
     }
 
     /// Saves a pasted credential for a keychain-backed account and refreshes.

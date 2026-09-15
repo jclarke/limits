@@ -13,16 +13,8 @@ struct CursorUsageService {
         string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
     )!
 
-    func fetch(token routedToken: String? = nil, now: Date = .now) async throws -> ProviderQuota {
-        let auth: CursorAuthReader.Auth
-        if let routedToken, !routedToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            auth = CursorAuthReader.Auth(
-                accessToken: routedToken.trimmingCharacters(in: .whitespacesAndNewlines),
-                membershipType: nil
-            )
-        } else if let discovered = await CursorAuthReader().load() {
-            auth = discovered
-        } else {
+    func fetch(now: Date = .now) async throws -> ProviderQuota {
+        guard let auth = await CursorAuthReader().load() else {
             throw AccountIssue.notSignedIn
         }
         if let expiry = JWT.expiry(auth.accessToken), expiry <= now {

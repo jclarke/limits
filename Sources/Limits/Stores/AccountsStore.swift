@@ -15,6 +15,17 @@ final class AccountsStore: ObservableObject {
     @Published private(set) var trackedProviders: Set<Provider> = []
     /// System-account visibility, keyed by provider.
     @Published private(set) var systemOverrides: [Provider: SystemOverride] = [:]
+    /// Accounts read out of a provider's own credential store, refreshed from
+    /// disk rather than persisted here.
+    @Published private(set) var discovered: [Provider: [DiscoveredAccount]] = [:]
+    /// Visibility for discovered accounts, keyed by `AccountID` — the only
+    /// part of them Limits owns.
+    @Published private(set) var discoveredOverrides: [String: SystemOverride] = [:]
+
+    struct DiscoveredAccount: Hashable, Sendable {
+        let key: String
+        let name: String
+    }
 
     struct SystemOverride: Codable, Hashable, Sendable {
         var isEnabled: Bool = true
@@ -40,6 +51,25 @@ final class AccountsStore: ObservableObject {
     }
 
     func profiles(for provider: Provider) -> [AccountProfile] {
+        // A provider whose own tools track several accounts is listed straight
+        // from that store; there is no separate "system" account to add,
+        // because every one of them is a system account.
+        if provider.discoversAccounts {
+            return (discovered[provider] ?? []).map { account in
+                var profile = AccountProfile.discovered(
+                    provider,
+                    key: account.key,
+                    name: account.name
+                )
+                if let override = discoveredOverrides[profile.id.rawValue] {
+                    profile.isEnabled = override.isEnabled
+                    profile.showsInMenuBar = override.showsInMenuBar
+                    if !override.displayName.isEmpty { profile.displayName = override.displayName }
+                }
+                return profile
+            }
+        }
+
         var system = AccountProfile.system(provider)
         if let override = systemOverrides[provider] {
             system.isEnabled = override.isEnabled
@@ -50,6 +80,25 @@ final class AccountsStore: ObservableObject {
             .filter { $0.provider == provider }
             .sorted { $0.createdAt < $1.createdAt }
         return [system] + owned
+    }
+
+    /// Re-reads the accounts a provider's own CLI holds. Cheap enough to run
+    /// on every refresh round, which is how a sign-in performed outside Limits
+    /// shows up without the user doing anything.
+    func refreshDiscoveredAccounts() {
+        var next: [Provider: [DiscoveredAccount]] = [:]
+        for provider in Provider.allCases where provider.discoversAccounts {
+            switch provider {
+            case .grok:
+                next[provider] = GrokAuthReader().loadAll().map {
+                    DiscoveredAccount(key: $0.key, name: $0.resolvedName)
+                }
+            default:
+                break
+            }
+        }
+        guard next != discovered else { return }
+        discovered = next
     }
 
     /// Default selection when adding an account with no provider context.
@@ -128,6 +177,8 @@ final class AccountsStore: ObservableObject {
             managed[index].displayName = trimmed
         } else if let provider = systemProvider(for: id) {
             systemOverrides[provider, default: SystemOverride()].displayName = trimmed
+        } else {
+            discoveredOverrides[id.rawValue, default: SystemOverride()].displayName = trimmed
         }
         persist()
     }
@@ -138,6 +189,8 @@ final class AccountsStore: ObservableObject {
             managed[index].isEnabled = enabled
         } else if let provider = systemProvider(for: id) {
             systemOverrides[provider, default: SystemOverride()].isEnabled = enabled
+        } else {
+            discoveredOverrides[id.rawValue, default: SystemOverride()].isEnabled = enabled
         }
         persist()
     }
@@ -148,6 +201,8 @@ final class AccountsStore: ObservableObject {
             managed[index].showsInMenuBar = shows
         } else if let provider = systemProvider(for: id) {
             systemOverrides[provider, default: SystemOverride()].showsInMenuBar = shows
+        } else {
+            discoveredOverrides[id.rawValue, default: SystemOverride()].showsInMenuBar = shows
         }
         persist()
     }
@@ -181,6 +236,7 @@ final class AccountsStore: ObservableObject {
         var managed: [AccountProfile]
         var tracked: [Provider]
         var systemOverrides: [String: SystemOverride]
+        var discoveredOverrides: [String: SystemOverride]?
     }
 
     private func load() {
@@ -189,6 +245,7 @@ final class AccountsStore: ObservableObject {
             // First launch: track whatever the machine already has set up so
             // the app is useful before the user configures anything.
             trackedProviders = Set(Self.autodetectedProviders())
+            refreshDiscoveredAccounts()
             return
         }
         // An earlier build offered managed Antigravity profiles before it was
@@ -200,13 +257,16 @@ final class AccountsStore: ObservableObject {
             guard let provider = Provider(rawValue: entry.key) else { return }
             result[provider] = entry.value
         }
+        discoveredOverrides = decoded.discoveredOverrides ?? [:]
+        refreshDiscoveredAccounts()
     }
 
     private func persist() {
         let payload = Persisted(
             managed: managed,
             tracked: Array(trackedProviders),
-            systemOverrides: systemOverrides.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value }
+            systemOverrides: systemOverrides.reduce(into: [:]) { $0[$1.key.rawValue] = $1.value },
+            discoveredOverrides: discoveredOverrides
         )
         guard let data = try? JSONEncoder().encode(payload) else { return }
         defaults.set(data, forKey: Self.profilesKey)

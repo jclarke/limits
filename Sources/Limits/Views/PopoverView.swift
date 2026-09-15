@@ -266,9 +266,12 @@ private struct AccountBlock: View {
     /// Antigravity needs a code pasted back, which the popover is too small
     /// for — hand it to the Providers screen instead.
     private func startSignIn(_ profile: AccountProfile) {
-        if profile.provider == .antigravity {
+        switch profile.provider {
+        case .antigravity:
             openProviders(sheet: .antigravitySignIn(profile))
-        } else {
+        case .cursor, .grok:
+            Task { await usage.signInSharedHome(provider: profile.provider) }
+        case .claude, .codex:
             Task { await usage.signIn(profile) }
         }
     }
