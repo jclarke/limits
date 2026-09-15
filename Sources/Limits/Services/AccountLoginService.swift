@@ -160,16 +160,71 @@ struct AccountLoginService: Sendable {
         // callback, so the default browser must stay enabled.
         environment.removeValue(forKey: "NO_OPEN_BROWSER")
 
-        // The browser round-trip is user-paced and may include an SSO hop.
-        try await runInPTY(
-            executable: executable,
-            arguments: arguments,
-            environment: environment,
-            timeout: 900
-        )
+        // `grok login` clears its credential file before the new session
+        // lands, so an interrupted sign-in — Limits quitting, the user closing
+        // the browser — leaves them signed out of accounts they already had.
+        // Keep a copy and put it back if the sign-in does not complete.
+        let rescue = CredentialRescue(provider: provider)
+        rescue.capture()
+
+        do {
+            // The browser round-trip is user-paced and may include an SSO hop.
+            try await runInPTY(
+                executable: executable,
+                arguments: arguments,
+                environment: environment,
+                timeout: 900
+            )
+        } catch {
+            rescue.restoreIfLost()
+            throw error
+        }
 
         guard try await sharedHomeIsSignedIn(provider: provider) else {
+            rescue.restoreIfLost()
             throw AccountIssue.other("\(name) finished without creating a signed-in account.")
+        }
+        rescue.discard()
+    }
+
+    /// Protects a provider's existing credential file across a sign-in that
+    /// rewrites it in place.
+    private struct CredentialRescue {
+        let provider: Provider
+        private let backup: URL
+
+        init(provider: Provider) {
+            self.provider = provider
+            backup = FileManager.default.temporaryDirectory
+                .appending(path: "limits-\(provider.rawValue)-auth-\(UUID().uuidString).json")
+        }
+
+        private var source: URL? {
+            switch provider {
+            case .grok: GrokAuthReader().authFileURL
+            // Cursor and the rest keep credentials in the Keychain, which a
+            // sign-in updates atomically — there is nothing to lose here.
+            default: nil
+            }
+        }
+
+        func capture() {
+            guard let source, FileManager.default.fileExists(atPath: source.path) else { return }
+            try? FileManager.default.copyItem(at: source, to: backup)
+        }
+
+        /// Only restores when the provider genuinely has nothing usable left,
+        /// so a successful sign-in is never rolled back over.
+        func restoreIfLost() {
+            defer { discard() }
+            guard let source, FileManager.default.fileExists(atPath: backup.path) else { return }
+            guard GrokAuthReader(authFileURL: source).loadAll().isEmpty else { return }
+            try? FileManager.default.removeItem(at: source)
+            try? FileManager.default.copyItem(at: backup, to: source)
+        }
+
+        func discard() {
+            try? FileManager.default.removeItem(at: backup)
         }
     }
 
