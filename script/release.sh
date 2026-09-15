@@ -78,12 +78,21 @@ git -C "$ROOT_DIR" commit -m "Release $VERSION"
 git -C "$ROOT_DIR" tag "v$VERSION"
 
 echo "==> Publishing to GitHub"
-# The release must exist before the appcast referencing it is pushed, or a
-# client could fetch a feed pointing at a download that is not there yet.
+# Order matters here, and getting it wrong is not obvious:
+#
+#   1. Push the tag alone. `gh release create` would otherwise create it
+#      itself, pointing at whatever the remote branch happens to be — the
+#      commit *before* the version bump — and then refuse the later tag push
+#      as already existing.
+#   2. Create the release from that tag, with the archive attached.
+#   3. Only then push main, so the appcast goes live after the download it
+#      points at, never before.
+git -C "$ROOT_DIR" push origin "refs/tags/v$VERSION"
 gh release create "v$VERSION" "$ARCHIVE" \
   --repo "$REPO" \
   --title "Limits $VERSION" \
+  --verify-tag \
   --generate-notes
-git -C "$ROOT_DIR" push origin main --tags
+git -C "$ROOT_DIR" push origin main
 
 echo "Released $VERSION — https://github.com/$REPO/releases/tag/v$VERSION"
