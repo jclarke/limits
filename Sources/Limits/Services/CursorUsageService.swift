@@ -13,8 +13,15 @@ struct CursorUsageService {
         string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
     )!
 
-    func fetch(now: Date = .now) async throws -> ProviderQuota {
-        guard let auth = await CursorAuthReader().load() else {
+    /// `capturedToken` is a session Limits saved for an account other than the
+    /// one Cursor is currently signed into.
+    func fetch(capturedToken: String? = nil, now: Date = .now) async throws -> ProviderQuota {
+        let auth: CursorAuthReader.Auth
+        if let capturedToken, !capturedToken.isEmpty {
+            auth = CursorAuthReader.Auth(accessToken: capturedToken, membershipType: nil, email: nil)
+        } else if let live = await CursorAuthReader().load() {
+            auth = live
+        } else {
             throw AccountIssue.notSignedIn
         }
         if let expiry = JWT.expiry(auth.accessToken), expiry <= now {
@@ -132,6 +139,19 @@ struct CursorAuthReader {
     struct Auth: Sendable {
         let accessToken: String
         let membershipType: String?
+        /// Cursor caches the signed-in address, which names the account far
+        /// better than anything Limits could invent.
+        let email: String?
+
+        /// Stable per-account identifier from the session JWT. Used to tell
+        /// one captured account from another, and to notice when a captured
+        /// account is the same one Cursor is currently signed into.
+        var subject: String? {
+            (JWT.payload(accessToken)?["sub"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var expiry: Date? { JWT.expiry(accessToken) }
     }
 
     var stateDBURL = URL(fileURLWithPath: NSString(
@@ -140,11 +160,27 @@ struct CursorAuthReader {
 
     func load() async -> Auth? {
         if let token = await stateValue(key: "cursorAuth/accessToken") {
-            return Auth(accessToken: token, membershipType: await stateValue(key: "cursorAuth/stripeMembershipType"))
+            return Auth(
+                accessToken: token,
+                membershipType: await stateValue(key: "cursorAuth/stripeMembershipType"),
+                email: await stateValue(key: "cursorAuth/cachedEmail")
+            )
         }
-        let outcome = KeychainRead.genericPassword(service: "cursor-access-token", interaction: .disallowed)
-        guard let token = Self.normalized(outcome.payload) else { return nil }
-        return Auth(accessToken: token, membershipType: nil)
+        // The CLI keeps its own copy when the IDE has never run here.
+        let direct = KeychainRead.genericPassword(
+            service: "cursor-access-token",
+            account: "cursor-user",
+            interaction: .disallowed
+        )
+        if let token = Self.normalized(direct.payload) {
+            return Auth(accessToken: token, membershipType: nil, email: nil)
+        }
+        let delegated = await KeychainRead.genericPasswordViaAppleTool(
+            service: "cursor-access-token",
+            account: "cursor-user"
+        )
+        guard let token = Self.normalized(delegated.payload) else { return nil }
+        return Auth(accessToken: token, membershipType: nil, email: nil)
     }
 
     /// Opened read-only so Limits can never disturb Cursor's own database,

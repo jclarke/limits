@@ -77,24 +77,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if snapshots.isEmpty {
             append(symbol: "gauge.with.dots.needle.67percent", color: .secondaryLabelColor, to: title)
         } else {
-            // A label is only earned when a provider shows more than one
-            // account: with a single one the mark already identifies it, and
-            // the menu bar is too scarce to spend width on nothing.
-            let labelled = Dictionary(grouping: snapshots, by: \.provider)
-                .filter { $0.value.count > 1 }
-                .keys
+            let labels = Self.shortLabels(for: snapshots)
             for (index, snapshot) in snapshots.enumerated() {
                 if index > 0 { title.append(plain("  ")) }
                 append(provider: snapshot.provider, to: title)
-                if labelled.contains(snapshot.provider) {
-                    // Full menu bar foreground, not a secondary tone: the
-                    // label has to be readable at two characters against an
-                    // arbitrary wallpaper, and anything dimmer disappears.
-                    title.append(plain(
-                        " " + snapshot.profile.resolvedMenuBarLabel(provider: snapshot.provider),
-                        color: menuBarForeground,
-                        weight: .bold
-                    ))
+                if let label = labels[snapshot.id] {
+                    title.append(superscript(label))
                 }
                 title.append(plain(" " + value(for: snapshot), color: color(for: snapshot)))
             }
@@ -107,6 +95,37 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         button.attributedTitle = title
         button.setAccessibilityLabel(accessibilityText(snapshots))
+    }
+
+    /// Which accounts need a label.
+    ///
+    /// A label is only earned when a provider shows more than one account:
+    /// with a single one the mark already identifies it, and the menu bar is
+    /// too scarce to spend width on nothing. Two characters are always used —
+    /// a single initial collides too easily, and raised at this size the pair
+    /// costs barely more width than one.
+    static func shortLabels(for snapshots: [AccountSnapshot]) -> [AccountID: String] {
+        var labels: [AccountID: String] = [:]
+        for (_, group) in Dictionary(grouping: snapshots, by: \.provider) where group.count > 1 {
+            for account in group {
+                labels[account.id] = account.profile
+                    .resolvedMenuBarLabel(provider: account.provider)
+            }
+        }
+        return labels
+    }
+
+    /// Raised and small, so the label reads as a mark on the icon rather than
+    /// as another word competing with the percentage.
+    private func superscript(_ text: String) -> NSAttributedString {
+        NSAttributedString(string: text, attributes: [
+            // Slightly tighter than the figure it labels, raised to sit level
+            // with the mark's cap height.
+            .font: NSFont.systemFont(ofSize: 8.5, weight: .bold),
+            .foregroundColor: menuBarForeground,
+            .baselineOffset: 4.5,
+            .kern: -0.2
+        ])
     }
 
     /// An account with an auth problem shows a dash: the menu bar must never
