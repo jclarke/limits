@@ -19,7 +19,19 @@ CONFIGURATION="${LIMITS_CONFIGURATION:-release}"
 # A stable code signature is what lets macOS remember the user's "Always
 # Allow" decision for a provider's Keychain item across rebuilds. Ad-hoc
 # signing is enough for that as long as the bundle identifier is stable.
-SIGNING_IDENTITY="${LIMITS_SIGNING_IDENTITY:--}"
+#
+# Releases need a real Developer ID instead, so anyone downloading the app can
+# open it without Gatekeeper refusing. When that certificate is installed it
+# is used by default; otherwise the build falls back to ad-hoc so a machine
+# without the certificate can still build and run locally.
+DEFAULT_RELEASE_IDENTITY="Developer ID Application: Hosting Playground Inc (9587GKN6Q4)"
+if [[ -n "${LIMITS_SIGNING_IDENTITY:-}" ]]; then
+  SIGNING_IDENTITY="$LIMITS_SIGNING_IDENTITY"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -qF "$DEFAULT_RELEASE_IDENTITY"; then
+  SIGNING_IDENTITY="$DEFAULT_RELEASE_IDENTITY"
+else
+  SIGNING_IDENTITY="-"
+fi
 
 echo "==> Building ($CONFIGURATION)"
 swift build -c "$CONFIGURATION" --package-path "$ROOT_DIR"

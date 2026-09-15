@@ -32,10 +32,17 @@ enum CursorAccountCapture {
     static func currentCLIIdentity() async -> Identity? {
         let accounts = await CursorAuthReader().loadAll()
         guard let auth = accounts.last, let subject = auth.subject else { return nil }
+        // Only the editor caches an address, so a CLI-held account arrives
+        // nameless. Ask the CLI now, while it still holds this account — after
+        // the next sign-in replaces it there is nothing left to ask.
+        var email = auth.email
+        if email?.isEmpty ?? true {
+            email = await CursorAuthReader.signedInEmailFromCLI()
+        }
         return Identity(
             token: auth.accessToken,
             subject: subject,
-            email: auth.email,
+            email: email,
             expiry: auth.expiry
         )
     }

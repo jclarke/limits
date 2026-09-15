@@ -29,6 +29,7 @@ final class AntigravityLoginSession: ObservableObject {
     @Published private(set) var phase: Phase = .idle
 
     private var process: Process?
+    private var watchdog: Task<Void, Never>?
     private var master: Int32 = -1
     private var readSource: DispatchSourceRead?
     private var transcript = ""
@@ -90,6 +91,40 @@ final class AntigravityLoginSession: ObservableObject {
 
         process.terminationHandler = { [weak self] finished in
             Task { @MainActor in self?.processEnded(status: finished.terminationStatus) }
+        }
+
+        startWatchdog()
+    }
+
+    /// Watches for the two outcomes that never print an authorization URL.
+    ///
+    /// `agy` only asks for a browser sign-in when it has nothing to work with.
+    /// Against a profile that is merely *expired* it renews the credential
+    /// silently and goes straight on to the prompt — so waiting for a URL that
+    /// is never coming left the sheet stuck on "Starting Antigravity's
+    /// sign-in…" forever. Whichever lands first wins: a usable credential
+    /// means the session is done, and neither within the deadline is a
+    /// failure worth reporting rather than spinning on.
+    private func startWatchdog() {
+        watchdog = Task { [weak self] in
+            let deadline = Date().addingTimeInterval(45)
+            while !Task.isCancelled, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard let self else { return }
+                if case .awaitingCode = self.phase { return }
+                if case .completing = self.phase { return }
+                if await AntigravityTokenReader().load() != nil {
+                    // Renewed without ever needing the browser. Stop the CLI
+                    // before it starts running the prompt this used to launch.
+                    self.markFinished()
+                    return
+                }
+            }
+            guard let self, case .launching = self.phase else { return }
+            self.phase = .failed(
+                "Antigravity did not start a sign-in. Try running `agy` once in a terminal, then check again."
+            )
+            self.cleanUp()
         }
     }
 
@@ -164,6 +199,8 @@ final class AntigravityLoginSession: ObservableObject {
     }
 
     private func cleanUp() {
+        watchdog?.cancel()
+        watchdog = nil
         readSource?.cancel()
         readSource = nil
         if let process, process.isRunning {
