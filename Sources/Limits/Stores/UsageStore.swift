@@ -11,9 +11,10 @@ final class UsageStore: ObservableObject {
     /// block a second concurrent login for the same account.
     @Published private(set) var loggingIn: Set<AccountID> = []
 
-    /// Providers publish 5-hour and weekly windows; a minute of staleness is
-    /// invisible, while a tighter loop just burns rate limit.
-    static let refreshInterval: TimeInterval = 60
+    /// Providers publish 5-hour and weekly windows, so a few minutes of
+    /// staleness is invisible while a tighter loop just burns rate limit —
+    /// Claude starts answering usage checks with 429 at a once-a-minute poll.
+    static let refreshInterval: TimeInterval = 300
 
     private let accounts: AccountsStore
     private let fetcher = QuotaFetcher()

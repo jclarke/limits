@@ -34,7 +34,7 @@ struct SettingsView: View {
 
             Section {
                 LabeledContent("Checked every") {
-                    Text("\(Int(UsageStore.refreshInterval / 60)) minute")
+                    Text(Formatting.duration(UsageStore.refreshInterval))
                         .foregroundStyle(.secondary)
                 }
                 LabeledContent("Credentials") {
