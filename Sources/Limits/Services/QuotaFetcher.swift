@@ -44,7 +44,11 @@ struct QuotaFetcher: Sendable {
         case .grok:
             return try await GrokUsageService().fetch(token: try storedSecret(profile), now: now)
         case .antigravity:
-            return try await AntigravityUsageService().fetch(accessToken: try storedSecret(profile), now: now)
+            return try await AntigravityUsageService().fetch(
+                accessToken: try storedSecret(profile),
+                now: now,
+                keychainInteraction: keychainInteraction
+            )
         }
     }
 

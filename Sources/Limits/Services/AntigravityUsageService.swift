@@ -19,7 +19,11 @@ struct AntigravityUsageService {
 
     /// `accessToken` is supplied for managed accounts, which must never probe
     /// the running app or inherit its single Keychain account.
-    func fetch(accessToken: String? = nil, now: Date = .now) async throws -> ProviderQuota {
+    func fetch(
+        accessToken: String? = nil,
+        now: Date = .now,
+        keychainInteraction: KeychainRead.Interaction = .disallowed
+    ) async throws -> ProviderQuota {
         if let accessToken {
             let cleaned = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty else { throw AccountIssue.noCredentialStored }
@@ -42,7 +46,7 @@ struct AntigravityUsageService {
             localProbeFoundApp = false
         }
 
-        guard let token = AntigravityTokenReader().load() else {
+        guard let token = await AntigravityTokenReader().load(keychainInteraction: keychainInteraction) else {
             throw localProbeFoundApp
                 ? AccountIssue.other("Antigravity is running but did not report quota. Try again in a moment.")
                 : AccountIssue.notSignedIn
@@ -178,12 +182,30 @@ struct AntigravityTokenReader {
         let expiry: Date?
     }
 
-    func load() -> Token? {
-        guard let raw = KeychainRead.genericPassword(
-            service: "gemini",
-            account: "antigravity",
-            interaction: .disallowed
-        ).payload, let text = GoKeyring.unwrap(raw) else { return nil }
+    static let keychainService = "gemini"
+    static let keychainAccount = "antigravity"
+
+    /// The Antigravity CLI writes this item through the legacy keychain, which
+    /// stamps it `apple-tool:` and admits no GUI app into its partition — the
+    /// same situation as Claude Code's credential. So try the direct read
+    /// first and fall back to `/usr/bin/security`, the one path that partition
+    /// actually allows. Without the fallback a signed-in user reads as
+    /// "not signed in".
+    func load(keychainInteraction: KeychainRead.Interaction = .disallowed) async -> Token? {
+        let direct = KeychainRead.genericPassword(
+            service: Self.keychainService,
+            account: Self.keychainAccount,
+            interaction: keychainInteraction
+        )
+        if let raw = direct.payload, let text = GoKeyring.unwrap(raw), let token = Self.parse(text) {
+            return token
+        }
+        guard direct.payload == nil else { return nil }
+        let delegated = await KeychainRead.genericPasswordViaAppleTool(
+            service: Self.keychainService,
+            account: Self.keychainAccount
+        )
+        guard let raw = delegated.payload, let text = GoKeyring.unwrap(raw) else { return nil }
         return Self.parse(text)
     }
 

@@ -195,7 +195,7 @@ struct GuidanceSheet: View {
         case .grok:
             return "Run `grok` once in a terminal to refresh its login. Limits reads ~/.grok/auth.json read-only and never renews the token itself."
         case .antigravity:
-            return "Open Antigravity and sign in. Limits reads quota straight from the running app, so leaving it open is usually all that's needed."
+            return "Run `agy` in a terminal, or open the Antigravity app and sign in.\n\nAntigravity's login lasts about an hour, so its quota goes stale sooner than the others. Limits reads it read-only and never renews it — using Antigravity again refreshes the session automatically."
         }
     }
 }

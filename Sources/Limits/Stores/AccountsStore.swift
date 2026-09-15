@@ -233,8 +233,14 @@ final class AccountsStore: ObservableObject {
             detected.append(.cursor)
         }
         if exists(home.appending(path: ".grok").path) { detected.append(.grok) }
+        // Antigravity ships both a desktop app and the `agy` CLI, and the CLI
+        // keeps its own state under ~/.gemini. Checking only for the .app
+        // misses anyone who uses the CLI alone.
         if exists("/Applications/Antigravity.app")
-            || exists(home.appending(path: "Applications/Antigravity.app").path) {
+            || exists(home.appending(path: "Applications/Antigravity.app").path)
+            || exists(home.appending(path: ".gemini/antigravity-cli").path)
+            || exists(home.appending(path: ".antigravity").path)
+            || CLIResolver.resolve(named: "agy") != nil {
             detected.append(.antigravity)
         }
         // Never start with an empty screen.
