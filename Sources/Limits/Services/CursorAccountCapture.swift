@@ -27,11 +27,11 @@ enum CursorAccountCapture {
         }
     }
 
-    /// Reads whatever Cursor is signed into right now.
-    static func currentIdentity() async -> Identity? {
-        guard let auth = await CursorAuthReader().load(), let subject = auth.subject else {
-            return nil
-        }
+    /// Reads the account the `cursor-agent` CLI holds — the one a new sign-in
+    /// is about to replace. The editor's credential is separate and survives.
+    static func currentCLIIdentity() async -> Identity? {
+        let accounts = await CursorAuthReader().loadAll()
+        guard let auth = accounts.last, let subject = auth.subject else { return nil }
         return Identity(
             token: auth.accessToken,
             subject: subject,

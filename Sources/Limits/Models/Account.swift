@@ -96,6 +96,27 @@ struct AccountProfile: Codable, Hashable, Identifiable, Sendable {
         return Self.derivedLabel(from: resolvedDisplayName(provider: provider))
     }
 
+    /// Two-character labels that tell a set of same-provider names apart.
+    ///
+    /// "joe@ezhomesearch.com" and "joemclarke@gmail.com" both reduce to JO,
+    /// which is useless. Keeping the first letter and taking the second from
+    /// the first position where the names actually diverge gives JE and JM —
+    /// still recognisable as the account, and now distinct.
+    static func distinctLabels(for names: [String]) -> [String] {
+        let letters = names.map { name in
+            Array(name.filter { $0.isLetter || $0.isNumber }.uppercased())
+        }
+        guard let shortest = letters.map(\.count).min(), shortest > 0 else {
+            return names.map { derivedLabel(from: $0) }
+        }
+        // First position where they are not all the same character.
+        let divergence = (1..<max(shortest, 1)).first { index in
+            Set(letters.map { $0[index] }).count > 1
+        }
+        guard let divergence else { return names.map { derivedLabel(from: $0) } }
+        return letters.map { String([$0[0], $0[divergence]]) }
+    }
+
     static func derivedLabel(from name: String) -> String {
         let words = name
             .split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "_" })

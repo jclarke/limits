@@ -82,7 +82,7 @@ final class UsageStore: ObservableObject {
         defer { isRefreshingAll = false }
         // A sign-in performed outside Limits should show up on its own.
         accounts.refreshDiscoveredAccounts()
-        await refreshLiveAccountKeys()
+        await accounts.refreshDiscoveredCursorAccounts()
         let profiles = accounts.allProfiles.filter(\.isEnabled)
         // Concurrently, but each account still guarded by `inFlight`.
         await withTaskGroup(of: Void.self) { group in
@@ -166,15 +166,15 @@ final class UsageStore: ObservableObject {
         loggingIn.insert(marker)
         defer { loggingIn.remove(marker) }
         do {
-            // Save the account Cursor is currently signed into before the new
-            // sign-in replaces it, so adding a second account keeps the first
-            // rather than swapping it.
+            // The CLI's credential is about to be replaced, so keep a copy of
+            // the account it currently holds. The editor's is untouched and
+            // stays discoverable on its own.
             if provider.capturesCredentials { await captureCurrentAccount(provider: provider) }
 
             try await AccountLoginService().signInSharedHome(provider: provider)
 
-            if provider.capturesCredentials { await captureCurrentAccount(provider: provider) }
             accounts.refreshDiscoveredAccounts()
+            await accounts.refreshDiscoveredCursorAccounts()
             await refreshAll()
         } catch {
             let issue = (error as? AccountIssue) ?? .other(error.localizedDescription)
@@ -186,7 +186,7 @@ final class UsageStore: ObservableObject {
     /// Only ever called from an explicit "add account" action.
     private func captureCurrentAccount(provider: Provider) async {
         guard provider == .cursor,
-              let identity = await CursorAccountCapture.currentIdentity(),
+              let identity = await CursorAccountCapture.currentCLIIdentity(),
               CursorAccountCapture.isWorthCapturing(identity) else { return }
         try? accounts.captureAccount(
             provider: provider,
@@ -194,16 +194,6 @@ final class UsageStore: ObservableObject {
             providerAccountKey: identity.subject,
             secret: identity.token
         )
-    }
-
-    /// Records which account a provider is signed into now, so a captured copy
-    /// of the same account is not also listed.
-    private func refreshLiveAccountKeys() async {
-        guard accounts.trackedProviders.contains(.cursor) else { return }
-        let subject = await CursorAccountCapture.currentIdentity()?.subject
-        if accounts.liveAccountKeys[.cursor] != subject {
-            accounts.liveAccountKeys[.cursor] = subject
-        }
     }
 
     func isSigningIn(provider: Provider) -> Bool {

@@ -92,7 +92,15 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
 
     /// Accounts this provider's own tools already hold, which Limits lists
     /// rather than creating.
-    var discoversAccounts: Bool { self == .grok }
+    /// Cursor qualifies because its editor and CLI keep separate credentials,
+    /// so the machine can already hold two accounts without Limits doing
+    /// anything.
+    var discoversAccounts: Bool {
+        switch self {
+        case .grok, .cursor: true
+        case .claude, .codex, .antigravity: false
+        }
+    }
 
     /// Whether an extra account is made by saving a copy of the session the
     /// provider's CLI just produced.

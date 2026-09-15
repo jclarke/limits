@@ -15,11 +15,15 @@ struct CursorUsageService {
 
     /// `capturedToken` is a session Limits saved for an account other than the
     /// one Cursor is currently signed into.
-    func fetch(capturedToken: String? = nil, now: Date = .now) async throws -> ProviderQuota {
+    func fetch(
+        accountKey: String? = nil,
+        capturedToken: String? = nil,
+        now: Date = .now
+    ) async throws -> ProviderQuota {
         let auth: CursorAuthReader.Auth
         if let capturedToken, !capturedToken.isEmpty {
             auth = CursorAuthReader.Auth(accessToken: capturedToken, membershipType: nil, email: nil)
-        } else if let live = await CursorAuthReader().load() {
+        } else if let live = await CursorAuthReader().load(subject: accountKey) {
             auth = live
         } else {
             throw AccountIssue.notSignedIn
@@ -158,15 +162,59 @@ struct CursorAuthReader {
         string: "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
     ).expandingTildeInPath)
 
-    func load() async -> Auth? {
-        if let token = await stateValue(key: "cursorAuth/accessToken") {
-            return Auth(
-                accessToken: token,
-                membershipType: await stateValue(key: "cursorAuth/stripeMembershipType"),
-                email: await stateValue(key: "cursorAuth/cachedEmail")
-            )
+    /// Every account Cursor is signed into on this machine.
+    ///
+    /// The editor and the `cursor-agent` CLI keep *separate* credentials — the
+    /// editor in `state.vscdb`, the CLI in the Keychain — so signing the CLI
+    /// into another account leaves the editor on the first. They are genuinely
+    /// two accounts, and reading only the first source (as this did) reports
+    /// one account twice.
+    func loadAll() async -> [Auth] {
+        var accounts: [Auth] = []
+        var seen = Set<String>()
+
+        func add(_ auth: Auth?) {
+            guard let auth, let subject = auth.subject, seen.insert(subject).inserted else { return }
+            accounts.append(auth)
         }
-        // The CLI keeps its own copy when the IDE has never run here.
+
+        add(await editorAuth())
+        add(await cliAuth())
+        return accounts
+    }
+
+    /// The account matching `subject`, or the editor's when none is given.
+    func load(subject: String? = nil) async -> Auth? {
+        let accounts = await loadAll()
+        guard let subject else { return accounts.first }
+        return accounts.first { $0.subject == subject }
+    }
+
+    private func editorAuth() async -> Auth? {
+        guard let token = await stateValue(key: "cursorAuth/accessToken") else { return nil }
+        return Auth(
+            accessToken: token,
+            membershipType: await stateValue(key: "cursorAuth/stripeMembershipType"),
+            email: await stateValue(key: "cursorAuth/cachedEmail")
+        )
+    }
+
+    /// `cursor-agent status` prints "Logged in as <address>". Used only to
+    /// name an account the editor has never cached.
+    static func signedInEmailFromCLI() async -> String? {
+        guard let executable = CLIResolver.resolve(named: "cursor-agent") else { return nil }
+        guard let data = try? await ProcessRunner.run(
+            executable.path,
+            arguments: ["status"],
+            timeout: 25
+        ) else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
+        guard let match = text.split(whereSeparator: { $0.isWhitespace })
+            .first(where: { $0.contains("@") && !$0.hasPrefix("@") }) else { return nil }
+        return String(match).trimmingCharacters(in: CharacterSet(charactersIn: ".,;\"'"))
+    }
+
+    private func cliAuth() async -> Auth? {
         let direct = KeychainRead.genericPassword(
             service: "cursor-access-token",
             account: "cursor-user",

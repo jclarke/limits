@@ -27,10 +27,7 @@ final class AccountsStore: ObservableObject {
         let name: String
     }
 
-    /// The account a provider's own tools are signed into right now, by that
-    /// provider's identifier. Lets the live row be hidden when it duplicates
-    /// an account Limits already captured.
-    @Published var liveAccountKeys: [Provider: String] = [:]
+
 
     struct SystemOverride: Codable, Hashable, Sendable {
         var isEnabled: Bool = true
@@ -79,7 +76,15 @@ final class AccountsStore: ObservableObject {
         // from that store; there is no separate "system" account to add,
         // because every one of them is a system account.
         if provider.discoversAccounts {
-            return (discovered[provider] ?? []).map { account in
+            let live = discovered[provider] ?? []
+            let liveKeys = Set(live.map(\.key))
+            // A saved copy of an account that is still signed in would show the
+            // same numbers twice under two names.
+            let savedButNotLive = managed.filter {
+                $0.provider == provider
+                    && !liveKeys.contains($0.providerAccountKey ?? "")
+            }
+            return live.map { account in
                 var profile = AccountProfile.discovered(
                     provider,
                     key: account.key,
@@ -92,20 +97,12 @@ final class AccountsStore: ObservableObject {
                     if !override.menuBarLabel.isEmpty { profile.menuBarLabel = override.menuBarLabel }
                 }
                 return profile
-            }
+            } + savedButNotLive.sorted { $0.createdAt < $1.createdAt }
         }
 
         let owned = managed
             .filter { $0.provider == provider }
             .sorted { $0.createdAt < $1.createdAt }
-
-        // The live account is already on screen if it was captured, and
-        // showing the same numbers twice under two names is worse than
-        // showing one.
-        if let liveKey = liveAccountKeys[provider],
-           owned.contains(where: { $0.providerAccountKey == liveKey }) {
-            return owned
-        }
 
         var system = AccountProfile.system(provider)
         if let override = systemOverrides[provider] {
@@ -121,19 +118,38 @@ final class AccountsStore: ObservableObject {
     /// on every refresh round, which is how a sign-in performed outside Limits
     /// shows up without the user doing anything.
     func refreshDiscoveredAccounts() {
-        var next: [Provider: [DiscoveredAccount]] = [:]
-        for provider in Provider.allCases where provider.discoversAccounts {
-            switch provider {
-            case .grok:
-                next[provider] = GrokAuthReader().loadAll().map {
-                    DiscoveredAccount(key: $0.key, name: $0.resolvedName)
-                }
-            default:
-                break
-            }
+        var next = discovered
+        next[.grok] = GrokAuthReader().loadAll().map {
+            DiscoveredAccount(key: $0.key, name: $0.resolvedName)
         }
         guard next != discovered else { return }
         discovered = next
+    }
+
+    /// Resolved once per account, because naming one costs a process launch.
+    private var cursorNames: [String: String] = [:]
+
+    /// Cursor's sources need an async read, so it updates separately from the
+    /// synchronous file-backed providers.
+    func refreshDiscoveredCursorAccounts() async {
+        var accounts: [DiscoveredAccount] = []
+        for auth in await CursorAuthReader().loadAll() {
+            guard let subject = auth.subject else { continue }
+            if let email = auth.email, !email.isEmpty {
+                cursorNames[subject] = email
+            } else if cursorNames[subject] == nil,
+                      let reported = await CursorAuthReader.signedInEmailFromCLI() {
+                // Only the editor caches an address; the CLI will report its
+                // own when asked, which beats labelling the row "Cursor
+                // account" forever.
+                cursorNames[subject] = reported
+            }
+            accounts.append(
+                DiscoveredAccount(key: subject, name: cursorNames[subject] ?? "Cursor account")
+            )
+        }
+        guard discovered[.cursor] != accounts else { return }
+        discovered[.cursor] = accounts
     }
 
     /// Default selection when adding an account with no provider context.
@@ -259,7 +275,11 @@ final class AccountsStore: ObservableObject {
     }
 
     func setEnabled(_ id: AccountID, _ enabled: Bool) {
-        guard profile(id: id)?.isEnabled != enabled else { return }
+        // An unknown account means the row was asked about state it no longer
+        // has — a SwiftUI toggle can fire its setter while the list is being
+        // rebuilt. Writing then records a value the user never chose, and for
+        // a nil lookup the "no-op" check below would pass and do exactly that.
+        guard let current = profile(id: id), current.isEnabled != enabled else { return }
         if let index = managed.firstIndex(where: { $0.id == id }) {
             managed[index].isEnabled = enabled
         } else if let provider = systemProvider(for: id) {
@@ -276,7 +296,8 @@ final class AccountsStore: ObservableObject {
         let normalized = String(
             label.filter { $0.isLetter || $0.isNumber }.prefix(2)
         ).uppercased()
-        guard profile(id: id)?.menuBarLabel ?? "" != normalized else { return }
+        guard let current = profile(id: id),
+              current.menuBarLabel ?? "" != normalized else { return }
         if let index = managed.firstIndex(where: { $0.id == id }) {
             managed[index].menuBarLabel = normalized.isEmpty ? nil : normalized
         } else if let provider = systemProvider(for: id) {
@@ -288,7 +309,7 @@ final class AccountsStore: ObservableObject {
     }
 
     func setShowsInMenuBar(_ id: AccountID, _ shows: Bool) {
-        guard profile(id: id)?.showsInMenuBar != shows else { return }
+        guard let current = profile(id: id), current.showsInMenuBar != shows else { return }
         if let index = managed.firstIndex(where: { $0.id == id }) {
             managed[index].showsInMenuBar = shows
         } else if let provider = systemProvider(for: id) {

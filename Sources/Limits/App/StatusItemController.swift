@@ -88,7 +88,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                     title.append(superscript(label))
                 }
                 title.append(gap(Self.figureGap))
-                title.append(plain(value(for: snapshot), color: color(for: snapshot)))
+                title.append(plain(
+                    value(for: snapshot),
+                    color: menuBarForeground,
+                    weight: weight(for: snapshot)
+                ))
             }
         }
 
@@ -132,6 +136,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 labels[account.id] = account.profile
                     .resolvedMenuBarLabel(provider: account.provider)
             }
+            // Two accounts at the same provider sharing a label defeats the
+            // point of having one. Derived labels get pulled apart; a label
+            // the user typed is left exactly as they typed it.
+            let derived = group.filter { $0.profile.menuBarLabel?.isEmpty ?? true }
+            for collision in Dictionary(grouping: derived, by: { labels[$0.id] ?? "" })
+                .values where collision.count > 1 {
+                let names = collision.map { $0.name }
+                for (account, label) in zip(collision, AccountProfile.distinctLabels(for: names)) {
+                    labels[account.id] = label
+                }
+            }
         }
         return labels
     }
@@ -158,17 +173,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return Formatting.percent(remaining)
     }
 
-    private func color(for snapshot: AccountSnapshot) -> NSColor {
+    /// Urgency is carried by weight rather than color.
+    ///
+    /// A tinted figure has to survive whatever wallpaper is behind it, and at
+    /// menu bar size red and amber turn muddy against mid-tone backgrounds —
+    /// the state that most needs reading became the hardest to read. Weight
+    /// holds up everywhere, because it changes the glyph rather than fighting
+    /// the background for contrast.
+    private func weight(for snapshot: AccountSnapshot) -> NSFont.Weight {
         guard snapshot.issue == nil, let remaining = snapshot.quota?.lowestRemainingPercent else {
-            return .secondaryLabelColor
+            return .medium
         }
-        // Only call out the states that need action; a healthy figure stays
-        // in the menu bar's own color so it reads as ordinary status.
-        switch remaining {
-        case ..<10: return .systemRed
-        case ..<25: return .systemOrange
-        default: return .labelColor
-        }
+        return Formatting.isLow(remaining) ? .heavy : .medium
     }
 
     private func plain(

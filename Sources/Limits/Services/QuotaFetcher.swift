@@ -42,8 +42,11 @@ struct QuotaFetcher: Sendable {
         case .cursor:
             // A captured account reads the copy Limits saved; the live one
             // reads whatever Cursor is signed into now.
+            // A live account is read from whichever store still holds it; a
+            // saved copy is used only once the account is no longer live.
             return try await CursorUsageService().fetch(
-                capturedToken: profile.isSystem ? nil : try storedSecret(profile),
+                accountKey: profile.providerAccountKey,
+                capturedToken: profile.isDiscovered ? nil : AccountSecretStore.load(for: profile.id),
                 now: now
             )
         case .grok:
