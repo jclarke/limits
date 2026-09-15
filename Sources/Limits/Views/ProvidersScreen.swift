@@ -296,9 +296,20 @@ private struct AccountRow: View {
         return "\(Formatting.percent(window.remainingPercent)) left · \(window.label)"
     }
 
+
+    /// Antigravity's sign-in needs a code pasted back, so it opens a screen;
+    /// Claude and Codex complete entirely inside their own CLI.
+    private func startSignIn(_ profile: AccountProfile) {
+        if profile.provider == .antigravity {
+            router.sheet = .antigravitySignIn(profile)
+        } else {
+            Task { await usage.signIn(profile) }
+        }
+    }
+
     private func apply(_ remedy: AccountIssue.Remedy) {
         switch remedy {
-        case .signInAgain: Task { await usage.signIn(profile) }
+        case .signInAgain: startSignIn(profile)
         case .retry: Task { await usage.refresh(profile) }
         case .authorizeKeychain: Task { await usage.authorizeKeychain(for: profile) }
         case .replaceToken: router.sheet = .credential(profile)

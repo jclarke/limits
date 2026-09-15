@@ -21,6 +21,9 @@ struct AddAccountSheet: View {
     }
 
     private var usesCLILogin: Bool { provider.credentialKind == .isolatedCLI }
+    /// Antigravity's sign-in pauses for a pasted code, so it continues on its
+    /// own screen instead of completing inside this sheet.
+    private var usesInteractiveLogin: Bool { provider == .antigravity }
     private var cliAvailable: Bool { AccountLoginService.executable(for: provider) != nil }
 
     var body: some View {
@@ -112,6 +115,12 @@ struct AddAccountSheet: View {
             defer { isWorking = false }
             do {
                 let profile = try accounts.createManagedAccount(provider: provider, displayName: name)
+                if usesInteractiveLogin {
+                    // The code screen owns the rest, including removing the
+                    // profile if the user backs out before signing in.
+                    router.sheet = .antigravitySignIn(profile)
+                    return
+                }
                 if usesCLILogin {
                     await usage.signIn(profile)
                     // Remove the new profile only when the *sign-in* failed.

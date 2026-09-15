@@ -35,7 +35,9 @@ struct AccountLoginService: Sendable {
             case .codex:
                 codexRoutingOverrides.forEach { environment.removeValue(forKey: $0) }
                 environment["CODEX_HOME"] = configurationDirectory.path
-            case .cursor, .grok, .antigravity:
+            case .antigravity, .cursor, .grok:
+                // Antigravity builds its environment in AntigravityEnvironment,
+                // which also has to strip ambient Google credentials.
                 break
             }
             return environment
@@ -57,7 +59,11 @@ struct AccountLoginService: Sendable {
             try await loginClaude(configurationDirectory: configurationDirectory)
         case .codex:
             try await loginCodex(configurationDirectory: configurationDirectory)
-        case .cursor, .grok, .antigravity:
+        case .antigravity:
+            // Antigravity's sign-in pauses for a pasted code, so it is driven
+            // by AntigravityLoginSession rather than run to completion here.
+            throw AccountIssue.other("Antigravity sign-in runs on its own screen.")
+        case .cursor, .grok:
             throw AccountIssue.other("\(provider.displayName) has no CLI sign-in. Add this account with a token instead.")
         }
     }

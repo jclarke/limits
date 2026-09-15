@@ -60,6 +60,19 @@ struct DashboardView: View {
                 CredentialEntrySheet(profile: profile).environmentObject(usage)
             case .guidance(let profile):
                 GuidanceSheet(profile: profile)
+            case .antigravitySignIn(let profile):
+                AntigravitySignInView(profile: profile) { signedIn in
+                    // A profile that never completed sign-in has no credential
+                    // and would sit in the list permanently broken.
+                    if !signedIn, !profile.isSystem,
+                       !AntigravityProfileCredentials.hasCredential(
+                           configurationDirectory: profile.configurationDirectoryURL ?? URL(fileURLWithPath: "/")
+                       ) {
+                        accounts.remove(profile.id)
+                    }
+                    router.sheet = nil
+                }
+                .environmentObject(usage)
             }
         }
     }
@@ -252,9 +265,20 @@ private struct ProviderLimitsCard: View {
         }
     }
 
+
+    /// Antigravity's sign-in needs a code pasted back, so it opens a screen;
+    /// Claude and Codex complete entirely inside their own CLI.
+    private func startSignIn(_ profile: AccountProfile) {
+        if profile.provider == .antigravity {
+            router.sheet = .antigravitySignIn(profile)
+        } else {
+            Task { await usage.signIn(profile) }
+        }
+    }
+
     private func apply(_ remedy: AccountIssue.Remedy, to snapshot: AccountSnapshot) {
         switch remedy {
-        case .signInAgain: Task { await usage.signIn(snapshot.profile) }
+        case .signInAgain: startSignIn(snapshot.profile)
         case .retry: Task { await usage.refresh(snapshot.profile) }
         case .authorizeKeychain: Task { await usage.authorizeKeychain(for: snapshot.profile) }
         case .replaceToken: router.sheet = .credential(snapshot.profile)

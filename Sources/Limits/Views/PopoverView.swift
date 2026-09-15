@@ -255,11 +255,21 @@ private struct AccountBlock: View {
     /// account so the user never has to hunt for it.
     private func apply(_ remedy: AccountIssue.Remedy) {
         switch remedy {
-        case .signInAgain: Task { await usage.signIn(snapshot.profile) }
+        case .signInAgain: startSignIn(snapshot.profile)
         case .retry: Task { await usage.refresh(snapshot.profile) }
         case .authorizeKeychain: Task { await usage.authorizeKeychain(for: snapshot.profile) }
         case .replaceToken: openProviders(sheet: .credential(snapshot.profile))
         case .signInWithProviderApp, .installCLI: openProviders(sheet: .guidance(snapshot.profile))
+        }
+    }
+
+    /// Antigravity needs a code pasted back, which the popover is too small
+    /// for — hand it to the Providers screen instead.
+    private func startSignIn(_ profile: AccountProfile) {
+        if profile.provider == .antigravity {
+            openProviders(sheet: .antigravitySignIn(profile))
+        } else {
+            Task { await usage.signIn(profile) }
         }
     }
 

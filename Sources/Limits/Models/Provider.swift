@@ -63,8 +63,8 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
     /// pasted credential in the Keychain.
     var credentialKind: AccountCredentialKind {
         switch self {
-        case .claude, .codex: .isolatedCLI
-        case .cursor, .grok, .antigravity: .keychainSecret
+        case .claude, .codex, .antigravity: .isolatedCLI
+        case .cursor, .grok: .keychainSecret
         }
     }
 
@@ -73,7 +73,11 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .claude: "claude"
         case .codex: "codex"
-        case .cursor, .grok, .antigravity: nil
+        // Antigravity's own CLI. Its sign-in prints a Google URL and then
+        // accepts the code the callback page shows, which is a flow Limits
+        // can drive without ever handling the credential itself.
+        case .antigravity: "agy"
+        case .cursor, .grok: nil
         }
     }
 
@@ -92,9 +96,7 @@ enum Provider: String, Codable, CaseIterable, Identifiable, Sendable {
             "Paste a Cursor session token. In Cursor, open the dashboard in a browser and copy the `WorkosCursorSessionToken` cookie value."
         case .grok:
             "Paste a Grok API session token. The Grok CLI stores one per account in ~/.grok/auth.json under `key`."
-        case .antigravity:
-            "Paste an Antigravity access token. Limits normally reads the running Antigravity app directly, so a token is only needed for a second account."
-        case .claude, .codex:
+        case .claude, .codex, .antigravity:
             ""
         }
     }

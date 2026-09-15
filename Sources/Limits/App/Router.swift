@@ -28,12 +28,16 @@ final class Router: ObservableObject {
         case credential(AccountProfile)
         /// Explain how to repair an account Limits deliberately does not own.
         case guidance(AccountProfile)
+        /// Antigravity's sign-in needs a code pasted back mid-flight, so it
+        /// gets its own screen rather than the one-shot CLI login.
+        case antigravitySignIn(AccountProfile)
 
         var id: String {
             switch self {
             case .addAccount(let provider): "add.\(provider?.rawValue ?? "any")"
             case .credential(let profile): "credential.\(profile.id.rawValue)"
             case .guidance(let profile): "guidance.\(profile.id.rawValue)"
+            case .antigravitySignIn(let profile): "antigravity.\(profile.id.rawValue)"
             }
         }
     }
