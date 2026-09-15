@@ -10,7 +10,7 @@
             <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.0/Limits-1.0.0.zip" length="2112728" type="application/octet-stream" sparkle:edSignature="WyNJBeZ0VC0fzP1ZsnpTX421dZQl08HUsRLoGaPKnoR/K21vGklQcza8Y5erSde7NOYmUTUVJM8C8DHS3fRtBg=="/>
+            <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.0/Limits-1.0.0.zip" length="2112728" type="application/octet-stream" sparkle:edSignature="nbINrye/vhJb6GfKoreVlG8ImkgoTtsOcuURpxDa4gYcANbYkwDXwWtAnG1PtRW0GWOiklJkhNtH5D3o0HUGCg=="/>
         </item>
     </channel>
 </rss>
