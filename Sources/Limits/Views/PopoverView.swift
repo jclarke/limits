@@ -47,7 +47,6 @@ struct PopoverView: View {
             footer
         }
         .frame(width: Metrics.popoverWidth)
-        .background(.regularMaterial)
     }
 
     private var header: some View {

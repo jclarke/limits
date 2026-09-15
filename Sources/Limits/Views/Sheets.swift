@@ -108,12 +108,14 @@ struct AddAccountSheet: View {
                 let profile = try accounts.createManagedAccount(provider: provider, displayName: name)
                 if usesCLILogin {
                     await usage.signIn(profile)
-                    // A failed login leaves a profile with no session. Remove
-                    // it rather than stranding a permanently broken row. Any
-                    // issue counts: most login failures surface as `.other`,
-                    // which is not classified as an auth problem.
-                    if usage.state(for: profile.id).issue != nil {
-                        let message = usage.lastLoginError ?? "Sign-in did not complete."
+                    // Remove the new profile only when the *sign-in* failed.
+                    // Keying on "the account has any issue" would also delete
+                    // a profile that signed in fine but whose first refresh
+                    // hit a rate limit or an unauthorized Keychain read —
+                    // throwing away a working login and orphaning its
+                    // credential. `signIn` reports login failures here and
+                    // clears this before each attempt.
+                    if let message = usage.lastLoginError {
                         accounts.remove(profile.id)
                         error = message
                         return

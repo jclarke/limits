@@ -18,10 +18,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
 
-    /// Past a handful of accounts the menu bar becomes unreadable and starts
-    /// crowding out other apps' items, so show the tightest few and a count.
-    private static let maximumShown = 4
-
     init(accounts: AccountsStore, usage: UsageStore, router: Router) {
         self.accounts = accounts
         self.usage = usage
@@ -59,23 +55,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     // MARK: - Title
 
-    private var shown: [AccountSnapshot] {
-        let all = usage.menuBarSnapshots
-        guard all.count > Self.maximumShown else { return all }
-        // When there is not room for everything, the accounts closest to
-        // running out are the ones worth the space.
-        return Array(
-            all.sorted {
-                ($0.quota?.lowestRemainingPercent ?? 101) < ($1.quota?.lowestRemainingPercent ?? 101)
-            }
-            .prefix(Self.maximumShown)
-        )
-    }
+    /// Exactly the accounts the user ticked "Menu Bar" for, in stable
+    /// provider order. No cap and no sorting by remaining: that checkbox *is*
+    /// the control for what belongs here, and reordering by a value that
+    /// drifts would make the menu bar reshuffle itself as quotas change.
+    private var shown: [AccountSnapshot] { usage.menuBarSnapshots }
 
     private func updateTitle() {
         guard let button = statusItem?.button else { return }
         let snapshots = shown
-        let hidden = max(0, usage.menuBarSnapshots.count - snapshots.count)
         let title = NSMutableAttributedString()
 
         if snapshots.isEmpty {
@@ -86,7 +74,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 append(provider: snapshot.provider, to: title)
                 title.append(plain(" " + value(for: snapshot), color: color(for: snapshot)))
             }
-            if hidden > 0 { title.append(plain("  +\(hidden)", color: .secondaryLabelColor)) }
         }
 
         if !usage.attentionSnapshots.isEmpty {

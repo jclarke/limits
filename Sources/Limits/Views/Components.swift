@@ -1,40 +1,67 @@
 import SwiftUI
 
-/// Segmented meter: discrete blocks rather than a continuous bar, so a glance
-/// reads as "about eight of twelve left" instead of an abstract ratio.
-struct SegmentedMeter: View {
+/// Ring gauge for one quota window.
+///
+/// Deliberately not a segmented bar: that reads as a generic progress track
+/// and is what every other quota tool draws. A ring echoes the app's own gauge
+/// mark, shows the exact figure in the middle where the eye already is, and
+/// lets a row be two lines instead of three.
+///
+/// Font Awesome's meter glyphs (`battery-*`, `gauge-*`, `signal`) were the
+/// obvious shortcut, but each is a fixed five-step icon — they cannot tell 93%
+/// from 100%, so they would be decoration sitting where data belongs.
+struct RingMeter: View {
     let remainingPercent: Double
     var tint: Color
-    var segments: Int = 16
-    var height: CGFloat = 5
+    var diameter: CGFloat = 34
+    var lineWidth: CGFloat = 3.5
+    /// Scoped windows render quieter so account-wide numbers stay dominant.
+    var isMuted = false
 
-    private var filled: Int {
-        // Never round down to zero while any quota remains: a hairline of
-        // color is the difference between "almost out" and "out".
-        let exact = remainingPercent / 100 * Double(segments)
-        return remainingPercent > 0 ? max(1, Int(exact.rounded())) : 0
-    }
+    private var fraction: Double { max(0, min(100, remainingPercent)) / 100 }
 
     var body: some View {
-        GeometryReader { geometry in
-            let spacing: CGFloat = 2
-            let width = (geometry.size.width - spacing * CGFloat(segments - 1)) / CGFloat(segments)
-            HStack(spacing: spacing) {
-                ForEach(0..<segments, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(index < filled ? tint : Color.primary.opacity(0.10))
-                        .frame(width: max(1, width))
-                }
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.10), lineWidth: lineWidth)
+
+            Circle()
+                // A sliver of arc always remains while any quota does: the
+                // difference between "almost out" and "out" must stay visible.
+                .trim(from: 0, to: remainingPercent > 0 ? max(0.012, fraction) : 0)
+                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                // Start at twelve o'clock and drain clockwise, the way a dial
+                // people already read does.
+                .rotationEffect(.degrees(-90))
+
+            // The unit lives inside the ring so the figure is self-describing
+            // and the row needs no trailing label floating off to the side.
+            HStack(spacing: 0) {
+                Text("\(Int(remainingPercent.rounded()))")
+                    .font(.system(size: diameter * 0.30, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text("%")
+                    .font(.system(size: diameter * 0.20, weight: .semibold, design: .rounded))
+                    .baselineOffset(diameter * 0.015)
+                    .opacity(0.55)
             }
+            .foregroundStyle(
+                isMuted ? Color.secondary
+                    : (Formatting.isLow(remainingPercent) ? tint : .primary)
+            )
+            .minimumScaleFactor(0.7)
+            .lineLimit(1)
+            .padding(.horizontal, lineWidth)
         }
-        .frame(height: height)
-        .animation(.easeOut(duration: 0.35), value: filled)
+        .frame(width: diameter, height: diameter)
+        .animation(.easeOut(duration: 0.4), value: fraction)
+        .help("\(Formatting.percent(remainingPercent)) remaining")
         .accessibilityElement()
         .accessibilityLabel("\(Formatting.percent(remainingPercent)) remaining")
     }
 }
 
-/// One quota window: label, remaining percent, meter, reset time.
+/// One quota window: ring, label, and reset time.
 struct QuotaWindowRow: View {
     let window: QuotaWindow
     var provider: Provider?
@@ -45,33 +72,36 @@ struct QuotaWindowRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isCompact ? 4 : 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(spacing: isCompact ? 9 : 11) {
+            RingMeter(
+                remainingPercent: window.remainingPercent,
+                tint: tint,
+                diameter: isCompact ? 28 : 34,
+                lineWidth: isCompact ? 3 : 3.5,
+                isMuted: window.isScoped
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(window.label)
                     .font(isCompact ? .caption : .subheadline)
+                    .fontWeight(window.isScoped ? .regular : .medium)
                     .foregroundStyle(window.isScoped ? .secondary : .primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Spacer(minLength: 4)
-                Text(Formatting.percent(window.remainingPercent))
-                    .font(isCompact ? .caption : .subheadline)
-                    .fontWeight(.semibold)
-                    .monospacedDigit()
-                    // Percentages stay neutral unless low: coloring every
-                    // number its provider's hue turns the text into decoration
-                    // and makes a genuinely low one easy to miss.
-                    .foregroundStyle(Formatting.isLow(window.remainingPercent) ? tint : .primary)
-                Text("left")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+
+                if let reset = Formatting.resetDescription(window.resetsAt) {
+                    Text(reset)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                } else {
+                    Text("No reset time reported")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
-            SegmentedMeter(remainingPercent: window.remainingPercent, tint: tint,
-                           height: isCompact ? 4 : 5)
-            if let reset = Formatting.resetDescription(window.resetsAt) {
-                Text(reset)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+
+            Spacer(minLength: 0)
         }
     }
 }

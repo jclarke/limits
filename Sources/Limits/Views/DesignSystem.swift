@@ -87,7 +87,9 @@ struct BalancedColumns<Item: Identifiable, Content: View>: View {
 
     /// Measured separately from layout: a `GeometryReader` wrapping the
     /// content would report no intrinsic height and collapse the scroll view.
-    @State private var availableWidth: CGFloat = 0
+    /// Seeded to the window's usable width so the first frame lays out with
+    /// the right column count instead of flashing a single column.
+    @State private var availableWidth: CGFloat = 760
 
     var body: some View {
         HStack(alignment: .top, spacing: spacing) {
