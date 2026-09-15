@@ -124,15 +124,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let window = NSWindow(contentViewController: hosting)
         window.title = "Limits"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        // The unified titlebar is what makes a sidebar window read as native:
-        // the toolbar merges into the title area and the sidebar's vibrancy
-        // runs the full height behind it.
-        // The redesign's titlebar is a single translucent strip carrying the
-        // segmented switcher, so the toolbar merges into it and the content
-        // runs underneath.
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        // A unified toolbar carries the segmented switcher. It deliberately
+        // does NOT combine fullSizeContentView with a transparent titlebar:
+        // that extends the content view behind the toolbar, and scrolled cards
+        // then slide underneath and show through the switcher. Letting AppKit
+        // own an opaque toolbar makes the overlap structurally impossible
+        // rather than relying on a material to hide it.
         window.toolbarStyle = .unified
-        window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .line
         window.isMovableByWindowBackground = true
