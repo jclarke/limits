@@ -3,6 +3,20 @@
     <channel>
         <title>Limits</title>
         <item>
+            <title>1.0.2</title>
+            <pubDate>Wed, 16 Sep 2026 08:57:48 -0400</pubDate>
+            <link>https://github.com/jclarke/limits</link>
+            <sparkle:version>10002</sparkle:version>
+            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.2/Limits-1.0.2.zip" length="2168627" type="application/octet-stream" sparkle:edSignature="Kjyh0ZVoVhpXULES345W49f7H0rzh9GSFHbNrj8bXlNdQTJBmrV90QfXgx606Fa2G0rswA7v5tu7okQIrvhUCg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.2/Limits10002-10001.delta" sparkle:deltaFrom="10001" length="126746" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="uF6upRMk+f/LNruc5zMgEdcJB1DmOMOJlL4fBgo003NxsbvxOVAzwyUhu/5ORz7YnJ11nR5AIVaoAySRd+ZNAQ=="/>
+                <enclosure url="https://github.com/jclarke/limits/releases/download/v1.0.2/Limits10002-10000.delta" sparkle:deltaFrom="10000" length="144318" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976240" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Ftry3goPblhlK9qZQnXBfLY7MhrtBAID/AmsvgnUQUH9cSzxeN7TRwHCtnUJ5RvXjR1onIUV3MJwfYq5YvUXBg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0.1</title>
             <pubDate>Tue, 15 Sep 2026 11:26:30 -0400</pubDate>
             <link>https://github.com/jclarke/limits</link>
