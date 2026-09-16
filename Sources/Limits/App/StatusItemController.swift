@@ -277,8 +277,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             popover.performClose(sender)
             return
         }
-        // Refresh on open so a popover the user just summoned is never stale.
-        Task { await usage.refreshAll() }
+        // Refresh on open so a popover the user just summoned is never stale,
+        // but reuse numbers fetched moments ago — repeatedly reopening the
+        // popover must not multiply provider requests.
+        Task { await usage.refreshIfStale() }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }

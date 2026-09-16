@@ -180,8 +180,17 @@ struct AccountState: Hashable, Sendable {
     var issue: AccountIssue?
     var isRefreshing: Bool = false
     var lastRefreshedAt: Date?
+    /// Set while a provider is rate limiting this account. Automatic refreshes
+    /// skip the account until it passes, so a 429 is not answered with more
+    /// requests to the endpoint that just sent it.
+    var retryAt: Date?
 
     var hasAuthProblem: Bool { issue?.isAuthProblem == true }
+
+    func isRateLimited(at now: Date = .now) -> Bool {
+        guard let retryAt else { return false }
+        return retryAt > now
+    }
 
     /// Whether this account should raise a warning rather than just sit idle.
     ///

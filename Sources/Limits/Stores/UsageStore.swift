@@ -16,6 +16,22 @@ final class UsageStore: ObservableObject {
     /// Claude starts answering usage checks with 429 at a once-a-minute poll.
     static let refreshInterval: TimeInterval = 300
 
+    /// A provider that answered 429 without a `Retry-After` still needs to be
+    /// left alone; one poll interval is the smallest defensible pause.
+    static let fallbackRetryDelay: TimeInterval = refreshInterval
+
+    /// How fresh the numbers must be for opening the popover to reuse them
+    /// instead of firing another round of provider requests.
+    static let openRefreshThreshold: TimeInterval = 60
+
+    /// Why a refresh is happening. Automatic rounds (the timer, opening the
+    /// popover) skip accounts a provider is currently rate limiting; only an
+    /// explicit per-account retry overrides that.
+    enum Trigger {
+        case automatic
+        case manual
+    }
+
     private let accounts: AccountsStore
     private let fetcher = QuotaFetcher()
     private var timer: Timer?
@@ -77,6 +93,17 @@ final class UsageStore: ObservableObject {
 
     // MARK: - Refresh
 
+    /// Refreshes only if the freshest account is older than `threshold`.
+    /// Opening the popover repeatedly must not multiply provider requests.
+    func refreshIfStale(olderThan threshold: TimeInterval = UsageStore.openRefreshThreshold) async {
+        let newest = accounts.allProfiles
+            .filter(\.isEnabled)
+            .compactMap { state(for: $0.id).lastRefreshedAt }
+            .max()
+        if let newest, Date.now.timeIntervalSince(newest) < threshold { return }
+        await refreshAll()
+    }
+
     func refreshAll(keychainInteraction: KeychainRead.Interaction = .disallowed) async {
         isRefreshingAll = true
         defer { isRefreshingAll = false }
@@ -88,7 +115,7 @@ final class UsageStore: ObservableObject {
         await withTaskGroup(of: Void.self) { group in
             for profile in profiles {
                 group.addTask { @MainActor [weak self] in
-                    await self?.refresh(profile, keychainInteraction: keychainInteraction)
+                    await self?.refresh(profile, keychainInteraction: keychainInteraction, trigger: .automatic)
                 }
             }
         }
@@ -99,8 +126,11 @@ final class UsageStore: ObservableObject {
 
     func refresh(
         _ profile: AccountProfile,
-        keychainInteraction: KeychainRead.Interaction = .disallowed
+        keychainInteraction: KeychainRead.Interaction = .disallowed,
+        trigger: Trigger = .manual
     ) async {
+        // Answering a 429 with another request only lengthens the penalty.
+        if trigger == .automatic, state(for: profile.id).isRateLimited() { return }
         guard !inFlight.contains(profile.id) else { return }
         inFlight.insert(profile.id)
         var pending = state(for: profile.id)
@@ -114,13 +144,20 @@ final class UsageStore: ObservableObject {
                 quota: quota,
                 issue: nil,
                 isRefreshing: false,
-                lastRefreshedAt: .now
+                lastRefreshedAt: .now,
+                retryAt: nil
             )
         } catch {
             let issue = (error as? AccountIssue) ?? .other(error.localizedDescription)
             var failed = state(for: profile.id)
             failed.isRefreshing = false
             failed.issue = issue
+            if case .rateLimited(let seconds) = issue {
+                let delay = seconds.map(TimeInterval.init) ?? Self.fallbackRetryDelay
+                failed.retryAt = Date.now.addingTimeInterval(max(delay, 0))
+            } else {
+                failed.retryAt = nil
+            }
             // Keep the last good numbers next to the warning; a transient
             // failure should not blank a row the user is watching.
             states[profile.id] = failed
